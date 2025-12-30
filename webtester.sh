@@ -2131,16 +2131,30 @@ function check_redos_vulnerability() {
 # --- [ BANNER UTAMA CALIBRATED ] ---
 function show_banner {
     clear
-    # Gradasi Cyan ke Biru Tua
-    echo -e "\e[1;36m"
-    echo "   ██╗    ██╗███████╗██████╗ ████████╗███████╗███████╗████████╗███████╗██████╗ "
-    echo "   ██║    ██║██╔════╝██╔══██╗╚══██╔══╝██╔════╝██╔════╝╚══██╔══╝██╔════╝██╔══██╗"
-    echo "   ██║ █╗ ██║█████╗  ██████╔╝   ██║   █████╗  ███████╗   ██║   █████╗  ██████╔╝"
-    echo "   ██║███╗██║██╔══╝  ██╔══██╗   ██║   ██╔══╝  ╚════██║   ██║   ██╔══╝  ██╔══██╗"
-    echo "   ╚███╔███╔╝███████╗██████╔╝   ██║   ███████╗███████║   ██║   ███████╗██  ██║"
-    echo "    ╚══╝╚══╝ ╚══════╝╚═════╝    ╚═╝   ╚══════╝╚══════╝   ╚═╝   ╚══════╝╚═╝  ╚═╝"
-    echo -e "\e[0m"
-    echo -e "\e[1;90m      [ Framework Version: 1.5 ]  [ 2025 ]\e[0m"
+    # Menggunakan palet warna Anda yang sudah ada
+    # C1-C3 dibuat sebagai gradasi menggunakan variabel C dan B Anda
+    local GRAD1="$C"     # Cyan (Proses / Info)
+    local GRAD2="$B"     # Blue (Header)
+    local GRAD3="$DC"    # Dark Cyan (Sub-menu)
+
+    # ASCII ART RAMPING (Muat di 80 Kolom agar tidak terpotong)
+    echo -e "${GRAD1}"
+    echo "  ██╗    ██╗███████╗██████╗ ████████╗███████╗███████╗████████╗███████╗██████╗ "
+    echo "  ██║    ██║██╔════╝██╔══██╗╚══██╔══╝██╔════╝██╔════╝╚══██╔══╝██╔════╝██╔══██╗"
+    echo -e "${GRAD2}"
+    echo "  ██║ █╗ ██║█████╗  ██████╔╝   ██║   █████╗  ███████╗   ██║   █████╗  ██████╔╝"
+    echo "  ██║███╗██║██╔══╝  ██╔══██╗   ██║   ██╔══╝  ╚════██║   ██║   ██╔══╝  ██╔══██╗"
+    echo -e "${GRAD3}"
+    echo "  ╚███╔███╔╝███████╗██████╔╝   ██║   ███████╗███████║   ██║   ███████╗██  ██║"
+    echo "   ╚══╝╚══╝ ╚══════╝╚═════╝    ╚═╝   ╚══════╝╚══════╝   ╚═╝   ╚══════╝╚═╝  ╚═╝"
+    echo -e "${NC}"
+
+    # Panel Informasi dengan Warna dari Palet Anda
+    # Menggunakan White (W) dan Dark Gray (DG) untuk kontras profesional
+    echo -e "  ${B}┌──────────────────────────────────────────────────────────────────────────┐${NC}"
+    echo -e "  ${B}│${NC}  ${W}CORE:${NC} ${G}V1.5 PRO${NC}  ${B}│${NC}  ${W}OS:${NC} ${C}$(uname -s)${NC}  ${B}│${NC}  ${W}IP:${NC} ${Y}$(hostname -I | awk '{print $1}')${NC}  ${B}│${NC}  ${W}YEAR:${NC} ${C}2025${NC}  ${B}      │${NC}"
+    echo -e "  ${B}└──────────────────────────────────────────────────────────────────────────┘${NC}"
+    
 }
 # --- [ MODUL 21: ATTACK PLAYBOOK (STRATEGY) ] ---
 function show_strategy {
@@ -2178,7 +2192,7 @@ function check_redos_vulnerability {
 while true; do
     clear
     
-    
+    show_banner
     echo -e "${DG}  [ Ver 1.5 Professional ]  [ Status: Multi-threaded Enabled ]  [ 2025 ]${NC}"
     echo -e "${W}=============================================================================${NC}"
     echo -e " ${R}${BOLD}[ SERVER-SIDE ]${NC}                        ${G}${BOLD}[ CLIENT-SIDE & CLOUD ]${NC}"
