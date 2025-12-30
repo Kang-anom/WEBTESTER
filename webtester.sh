@@ -23,6 +23,36 @@ function enable_sleep {
         xset s on +dpms
     fi
 }
+#!/bin/bash
+
+# --- [ PALET WARNA  ] ---
+
+# Warna Utama (Cerah/Bold)
+export R='\e[1;31m'         # Red (Gagal / Vulnerable)
+export G='\e[1;32m'         # Green (Sukses / Found)
+export Y='\e[1;33m'         # Yellow (Peringatan / Warning)
+export B='\e[1;34m'         # Blue (Header)
+export P='\e[1;35m'         # Purple (WAF / Filter)
+export C='\e[1;36m'         # Cyan (Proses / Info)
+export W='\e[1;37m'         # White (Teks Utama)
+
+# Warna Gelap/Redup (Untuk Detail/Log yang tidak kritis)
+export DG='\e[90m'          # Dark Gray (Alamat file/Timestamp)
+export DR='\e[0;31m'         # Dark Red (Info teknis error)
+export DC='\e[0;36m'         # Dark Cyan (Sub-menu)
+
+# Efek Khusus
+export NC='\e[0m'           # Reset Warna
+export BOLD='\e[1m'         # Tebal tanpa warna
+export UNDERLINE='\e[4m'    # Garis bawah
+export BLINK='\e[5m'        # Berkedip (Gunakan hanya untuk VULN!)
+
+# Simbol Konsisten
+export OK="${G}[+]${NC}"
+export ERR="${R}[-]${NC}"
+export WARN="${Y}[!]${NC}"
+export INFO="${C}[*]${NC}"
+export Q="${Y}[?]${NC}"
 
 # --- [ MODUL 01: LFI SCANNER (DETAILED LOG & EDU) ] ---
 
