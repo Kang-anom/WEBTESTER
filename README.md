@@ -18,7 +18,7 @@ Berikut adalah dokumentasi visual dari antarmuka dan proses pemindaian WEBTESTER
 ### 1. Main Menu Interface
 Tampilan menu utama yang terorganisir berdasarkan kategori serangan.
 *Main menu interface organized by attack categories.*
-![Main Menu](Screenshot_2025-12-29_22_13_42.png)
+![Main Menu](Screenshot_2025-12-31_06_29_09.png)
 
 ### 2. Scanning Process (Turbo Mode)
 Proses pemindaian cepat menggunakan multi-threading.
